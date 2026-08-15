@@ -22,7 +22,7 @@ services:
     plan: starter
     region: oregon
     rootDir: server
-    buildCommand: npm install && npx playwright install --with-deps chromium && npm run build
+    buildCommand: npm install && npx playwright install chromium && npm run build
     preDeployCommand: npm run migrate
     startCommand: npm start
     healthCheckPath: /health
@@ -105,7 +105,7 @@ services:
     # 3x daily: 07:00, 13:00, 19:00 UTC — matches the Tier 1 scraper's
     # documented polling schedule.
     schedule: "0 7,13,19 * * *"
-    buildCommand: npm install && npx playwright install --with-deps chromium && npm run build
+    buildCommand: npm install && npx playwright install chromium && npm run build
     startCommand: npm run cron:poll-legacy-carriers
     envVars:
       - key: NODE_VERSION
