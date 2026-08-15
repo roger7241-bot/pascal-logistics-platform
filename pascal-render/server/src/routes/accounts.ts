@@ -30,17 +30,32 @@ export interface Account {
   operationsManagerName?: string;
   apEmail?: string;
   apPhone?: string;
+  apContactName?: string;
   usEin?: string;
+  usDotNumber?: string;
+  mcFfNumber?: string;
   caBn?: string;
+  caBnProgramSuffix?: string;
   mxRfc?: string;
   countryOfIncorporation?: string;
   taxId?: string;
   creditLimitUsd?: number;
   retainerTier?: string;
   retainerMonthlyUsd?: number;
+  overageRateUsd?: number;
   billingCurrency: string;
   paymentTerms: string;
   houseSpotBenchmarkOptIn: boolean;
+  customsBrokerName?: string;
+  customsBrokerAccountRef?: string;
+  customsBrokerEmail?: string;
+  customsBrokerOpsPhone?: string;
+  customsPoaStatus?: "active_verified" | "pending_signature" | "exempt";
+  defaultPoePreference?: string;
+  primaryCommodities: string[];
+  requiresReefer: boolean;
+  requiresHazmat: boolean;
+  preferredCarrierScacs: string[];
   accountStatus: string;
 }
 
@@ -57,17 +72,32 @@ function rowToAccount(row: Record<string, unknown>): Account {
     operationsManagerName: (row.operations_manager_name as string) ?? undefined,
     apEmail: (row.ap_email as string) ?? undefined,
     apPhone: (row.ap_phone as string) ?? undefined,
+    apContactName: (row.ap_contact_name as string) ?? undefined,
     usEin: (row.us_ein as string) ?? undefined,
+    usDotNumber: (row.us_dot_number as string) ?? undefined,
+    mcFfNumber: (row.mc_ff_number as string) ?? undefined,
     caBn: (row.ca_bn as string) ?? undefined,
+    caBnProgramSuffix: (row.ca_bn_program_suffix as string) ?? undefined,
     mxRfc: (row.mx_rfc as string) ?? undefined,
     countryOfIncorporation: (row.country_of_incorporation as string) ?? undefined,
     taxId: (row.tax_id as string) ?? undefined,
     creditLimitUsd: row.credit_limit_usd !== null ? Number(row.credit_limit_usd) : undefined,
     retainerTier: (row.retainer_tier as string) ?? undefined,
     retainerMonthlyUsd: row.retainer_monthly_usd !== null ? Number(row.retainer_monthly_usd) : undefined,
+    overageRateUsd: row.overage_rate_usd !== null && row.overage_rate_usd !== undefined ? Number(row.overage_rate_usd) : undefined,
     billingCurrency: row.billing_currency as string,
     paymentTerms: row.payment_terms as string,
     houseSpotBenchmarkOptIn: row.house_spot_benchmark_opt_in as boolean,
+    customsBrokerName: (row.customs_broker_name as string) ?? undefined,
+    customsBrokerAccountRef: (row.customs_broker_account_ref as string) ?? undefined,
+    customsBrokerEmail: (row.customs_broker_email as string) ?? undefined,
+    customsBrokerOpsPhone: (row.customs_broker_ops_phone as string) ?? undefined,
+    customsPoaStatus: (row.customs_poa_status as Account["customsPoaStatus"]) ?? undefined,
+    defaultPoePreference: (row.default_poe_preference as string) ?? undefined,
+    primaryCommodities: (row.primary_commodities as string[]) ?? [],
+    requiresReefer: row.requires_reefer as boolean,
+    requiresHazmat: row.requires_hazmat as boolean,
+    preferredCarrierScacs: (row.preferred_carrier_scacs as string[]) ?? [],
     accountStatus: row.account_status as Account["accountStatus"],
   };
 }
@@ -109,8 +139,13 @@ export function createAccountsRouter(): Router {
     const result = await pool.query(
       `INSERT INTO accounts (
         org_id, company_name, legal_entity_name, primary_contact_name, primary_contact_email, primary_contact_phone,
-        country_of_incorporation, us_ein, ca_bn, mx_rfc, billing_currency, retainer_monthly_usd, payment_terms, account_status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'onboarding') RETURNING *`,
+        country_of_incorporation, us_ein, us_dot_number, mc_ff_number, ca_bn, ca_bn_program_suffix, mx_rfc,
+        billing_currency, retainer_monthly_usd, overage_rate_usd, payment_terms,
+        ap_email, ap_phone, ap_contact_name,
+        customs_broker_name, customs_broker_account_ref, customs_broker_email, customs_broker_ops_phone, customs_poa_status, default_poe_preference,
+        primary_commodities, requires_reefer, requires_hazmat, preferred_carrier_scacs,
+        account_status
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,'onboarding') RETURNING *`,
       [
         body.orgId,
         body.companyName,
@@ -120,11 +155,28 @@ export function createAccountsRouter(): Router {
         body.primaryContactPhone ?? null,
         body.countryOfIncorporation ?? null,
         body.usEin ?? null,
+        body.usDotNumber ?? null,
+        body.mcFfNumber ?? null,
         body.caBn ?? null,
+        body.caBnProgramSuffix ?? "RM0001",
         body.mxRfc ?? null,
         body.billingCurrency ?? "USD",
         body.retainerMonthlyUsd ?? null,
+        body.overageRateUsd ?? null,
         body.paymentTerms ?? "net30",
+        body.apEmail ?? null,
+        body.apPhone ?? null,
+        body.apContactName ?? null,
+        body.customsBrokerName ?? null,
+        body.customsBrokerAccountRef ?? null,
+        body.customsBrokerEmail ?? null,
+        body.customsBrokerOpsPhone ?? null,
+        body.customsPoaStatus ?? null,
+        body.defaultPoePreference ?? null,
+        body.primaryCommodities ?? [],
+        body.requiresReefer ?? false,
+        body.requiresHazmat ?? false,
+        body.preferredCarrierScacs ?? [],
       ],
     );
     res.status(201).json(rowToAccount(result.rows[0]));

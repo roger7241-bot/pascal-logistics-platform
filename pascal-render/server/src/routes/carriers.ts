@@ -59,6 +59,7 @@ function rowToCarrier(row: Record<string, unknown>) {
     coiExpiresAtIso: row.coi_expires_at ? (row.coi_expires_at as Date).toISOString() : undefined,
     dotMcRating: row.dot_mc_rating,
     twicCtpatCert: row.twic_ctpat_cert,
+    serviceType: row.service_type,
     onTimePct: row.on_time_pct !== null ? Number(row.on_time_pct) : undefined,
     claimsRatePct: row.claims_rate_pct !== null ? Number(row.claims_rate_pct) : undefined,
   };
@@ -86,7 +87,7 @@ export function createCarriersRouter(telemetryService: BorderTelemetryService): 
   });
 
   router.post("/carriers", async (req: Request, res: Response) => {
-    const { orgId, carrierName, carrierMode, accountNumber, scacCode, iataCode, fmcNumber, integrationStatus, emergencyPhone, dispatchEmail, accountExecName, coiExpiresAtIso, dotMcRating, twicCtpatCert } = req.body ?? {};
+    const { orgId, carrierName, carrierMode, accountNumber, scacCode, iataCode, fmcNumber, integrationStatus, emergencyPhone, dispatchEmail, accountExecName, coiExpiresAtIso, dotMcRating, twicCtpatCert, serviceType } = req.body ?? {};
     if (!orgId || !carrierName || !accountNumber) {
       return res.status(400).json({ error: "orgId, carrierName, and accountNumber are required." });
     }
@@ -98,8 +99,8 @@ export function createCarriersRouter(telemetryService: BorderTelemetryService): 
       `INSERT INTO carrier_accounts (
         org_id, carrier_name, account_number, account_format_valid, last_verified_at, carrier_mode,
         scac_code, iata_code, fmc_number, integration_status, emergency_phone, dispatch_email,
-        account_exec_name, coi_expires_at, dot_mc_rating, twic_ctpat_cert
-      ) VALUES ($1,$2,$3,$4::boolean, CASE WHEN $4::boolean IS NOT NULL THEN now() ELSE NULL END, $5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        account_exec_name, coi_expires_at, dot_mc_rating, twic_ctpat_cert, service_type
+      ) VALUES ($1,$2,$3,$4::boolean, CASE WHEN $4::boolean IS NOT NULL THEN now() ELSE NULL END, $5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       RETURNING *`,
       [
         orgId,
@@ -117,6 +118,7 @@ export function createCarriersRouter(telemetryService: BorderTelemetryService): 
         coiExpiresAtIso ?? null,
         dotMcRating ?? null,
         twicCtpatCert ?? false,
+        serviceType ?? null,
       ],
     );
 

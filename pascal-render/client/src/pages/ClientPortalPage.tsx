@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Package, Clock, ShieldCheck, PiggyBank, Plus, Upload, Search, MessageCircle, Truck, Ship, Plane, Settings } from "lucide-react";
+import { Package, Clock, ShieldCheck, PiggyBank, Plus, Upload, Search, MessageCircle, Truck, TrainFront, Ship, Plane, Settings, Trash2 } from "lucide-react";
 import { AppHeader } from "../components/AppHeader";
 import { ShipmentDetailDrawer } from "../components/ShipmentDetailDrawer";
 import { ClientShipmentIntakeWizard } from "../components/ClientShipmentIntakeWizard";
@@ -10,7 +10,7 @@ import { api } from "../config/api";
 import type { ClientShipmentSummary, StatusChip } from "../types/shipment";
 import type { RerouteAdvisory } from "../types/reroute";
 
-const MODE_ICON: Record<string, typeof Truck> = { road: Truck, ocean: Ship, air: Plane };
+const MODE_ICON: Record<string, typeof Truck> = { road: Truck, rail: TrainFront, ocean: Ship, air: Plane };
 
 const STATUS_CHIP_LABEL: Record<StatusChip, string> = {
   paps_pars_released: "PAPS/PARS Released",
@@ -59,6 +59,13 @@ export function ClientPortalPage() {
   useEffect(() => {
     api.rerouteAdvisories<{ advisories: RerouteAdvisory[] }>().then((d) => setPendingAdvisories(d.advisories.filter((a) => a.status === "pending_client_signoff")));
   }, []);
+
+  async function handleDeleteShipment(id: string) {
+    if (!confirm(`Cancel/void shipment ${id}? This cannot be undone.`)) return;
+    await api.deleteClientShipment(id);
+    setShipments((prev) => prev.filter((s) => s.id !== id));
+    if (selected?.id === id) setSelected(undefined);
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -137,21 +144,26 @@ export function ClientPortalPage() {
             {shipments.map((shipment) => {
               const ModeIcon = MODE_ICON[shipment.transportMode];
               return (
-                <button
-                  key={shipment.id}
-                  onClick={() => setSelected(shipment)}
-                  className="flex w-full items-center gap-4 px-5 py-3.5 text-left hover:bg-slate-50"
-                >
-                  <ModeIcon size={16} className="shrink-0 text-slate-400" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-mono text-sm font-semibold text-slate-900">{shipment.id}</p>
-                    <p className="text-xs text-slate-500">{shipment.lane}</p>
-                  </div>
-                  <span className="hidden text-xs text-slate-500 sm:inline">{shipment.tracker.percentComplete}% complete</span>
-                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CHIP_CLASS[shipment.statusChip]}`}>
-                    {STATUS_CHIP_LABEL[shipment.statusChip]}
-                  </span>
-                </button>
+                <div key={shipment.id} className="flex w-full items-center gap-4 px-5 py-3.5 hover:bg-slate-50">
+                  <button onClick={() => setSelected(shipment)} className="flex flex-1 items-center gap-4 text-left">
+                    <ModeIcon size={16} className="shrink-0 text-slate-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-sm font-semibold text-slate-900">{shipment.id}</p>
+                      <p className="text-xs text-slate-500">{shipment.lane}</p>
+                    </div>
+                    <span className="hidden text-xs text-slate-500 sm:inline">{shipment.tracker.percentComplete}% complete</span>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CHIP_CLASS[shipment.statusChip]}`}>
+                      {STATUS_CHIP_LABEL[shipment.statusChip]}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteShipment(shipment.id)}
+                    title="Cancel / void shipment"
+                    className="shrink-0 rounded-md border border-rose-200 p-1.5 text-rose-500 hover:bg-rose-50"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               );
             })}
           </div>

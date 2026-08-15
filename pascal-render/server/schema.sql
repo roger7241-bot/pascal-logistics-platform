@@ -822,3 +822,39 @@ CREATE TABLE IF NOT EXISTS magic_upload_tokens (
 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS slack_webhook_url TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS teams_webhook_url TEXT;
+
+-- Rapid Dispatch quick-add carrier modal — service_type is distinct from
+-- carrier_mode (road/ocean/air/broker): LTL/FTL/Reefer is a service-level
+-- classification within road freight, not a transport mode, so it's a
+-- separate additive column rather than overloading carrier_mode.
+ALTER TABLE carrier_accounts ADD COLUMN IF NOT EXISTS service_type TEXT CHECK (service_type IS NULL OR service_type IN ('LTL', 'FTL', 'Reefer'));
+
+-- ============================================================================
+-- ENTERPRISE ACCOUNT INTAKE — jurisdiction identifiers, broker/POA,
+-- retainer/overage terms, and operations profile defaults.
+-- ORDERING: payment_terms CHECK extension follows the safe DROP -> ADD
+-- pattern used earlier in this file — no existing rows use a value this
+-- removes, so no remap step is needed, just widen the allowed list.
+-- ============================================================================
+
+ALTER TABLE accounts DROP CONSTRAINT IF EXISTS accounts_payment_terms_check;
+ALTER TABLE accounts ADD CONSTRAINT accounts_payment_terms_check CHECK (payment_terms IN ('net15', 'net30', 'due_upon_receipt', 'credit_card'));
+
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS us_dot_number TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS mc_ff_number TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS ca_bn_program_suffix TEXT DEFAULT 'RM0001'; -- CBSA import/export program identifier appended to the 9-digit BN
+
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS customs_broker_name TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS customs_broker_account_ref TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS customs_broker_email TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS customs_broker_ops_phone TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS customs_poa_status TEXT CHECK (customs_poa_status IS NULL OR customs_poa_status IN ('active_verified', 'pending_signature', 'exempt'));
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS default_poe_preference TEXT; -- e.g. "Blaine 3004", "Sumas 3009"
+
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS overage_rate_usd NUMERIC(8,2);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS ap_contact_name TEXT;
+
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS primary_commodities TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS requires_reefer BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS requires_hazmat BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS preferred_carrier_scacs TEXT[] NOT NULL DEFAULT '{}';

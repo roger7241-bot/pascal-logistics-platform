@@ -65,10 +65,12 @@ export const api = {
   dispatchStagingQueue: <TResult = unknown>(orgId?: string) => request<TResult>(`/api/operator/dispatch/staging${orgId ? `?orgId=${encodeURIComponent(orgId)}` : ""}`),
   createDispatchStaging: <TResult = unknown>(payload: unknown) => request<TResult>("/api/operator/dispatch/staging", { method: "POST", body: payload }),
   cancelDispatchStaging: <TResult = unknown>(id: string) => request<TResult>(`/api/operator/dispatch/staging/${id}/cancel`, { method: "PATCH" }),
+  deleteDispatchStaging: <TResult = unknown>(id: string) => request<TResult>(`/api/operator/dispatch/staging/${id}`, { method: "DELETE" }),
   sendDispatchGateSms: <TResult = unknown>(id: string, payload?: { driverPhone?: string; message?: string }) =>
     request<TResult>(`/api/operator/dispatch/staging/${id}/send-gate-sms`, { method: "POST", body: payload ?? {} }),
   createMagicUploadLink: <TResult = unknown>(id: string) => request<TResult>(`/api/operator/dispatch/staging/${id}/magic-upload-link`, { method: "POST" }),
   clientShipments: <TResult = unknown>() => request<TResult>("/api/client/shipments"),
+  deleteClientShipment: <TResult = unknown>(id: string) => request<TResult>(`/api/client/shipments/${id}`, { method: "DELETE" }),
   clientShipmentDetail: <TResult = unknown>(id: string) => request<TResult>(`/api/client/shipments/${encodeURIComponent(id)}`),
   overridePaps: <TResult = unknown>(id: string) => request<TResult>(`/api/client/shipments/${encodeURIComponent(id)}/override-paps`, { method: "PATCH" }),
   rerouteShipment: <TResult = unknown>(id: string, newPoeId: string) => request<TResult>(`/api/client/shipments/${encodeURIComponent(id)}/reroute`, { method: "PATCH", body: { newPoeId } }),

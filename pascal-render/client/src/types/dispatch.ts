@@ -77,3 +77,15 @@ export interface MagicUploadTokenResult {
   qrCodeDataUri: string;
   expiresAtIso: string;
 }
+
+export type WeightUnit = "lbs" | "kg";
+export type CarrierServiceType = "LTL" | "FTL" | "Reefer";
+
+export interface CarrierQuickAddPayload {
+  orgId: string;
+  carrierName: string;
+  accountNumber: string; // required by POST /carriers — quick-add uses a placeholder pending real account setup
+  scacCode?: string;
+  emergencyPhone?: string; // dispatch/contact phone
+  serviceType?: CarrierServiceType;
+}

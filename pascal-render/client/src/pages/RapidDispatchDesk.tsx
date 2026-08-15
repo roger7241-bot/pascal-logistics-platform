@@ -9,18 +9,24 @@ import {
   MessageSquareText,
   Printer,
   Ban,
+  Trash2,
   ScanLine,
   X,
   ChevronRight,
+  Calculator,
+  Plus,
 } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api } from "../config/api";
+import { calculateFreightClass, lbsToKg, kgToLbs } from "../lib/freightClass";
 import type {
   CarrierCutoffInfo,
+  CarrierServiceType,
   ConsigneeOption,
   MagicUploadTokenResult,
   OutboundStagingRecord,
   PackagingType,
+  WeightUnit,
 } from "../types/dispatch";
 import { PACKAGING_DEFAULT_LBS_PER_UNIT, PACKAGING_LABEL } from "../types/dispatch";
 
@@ -112,6 +118,17 @@ export function RapidDispatchDesk() {
   const [grossWeightLbs, setGrossWeightLbs] = useState(PACKAGING_DEFAULT_LBS_PER_UNIT.standard_48x40);
   const [weightManuallyOverridden, setWeightManuallyOverridden] = useState(false);
   const [freightClass, setFreightClass] = useState("");
+  const [showDensityCalc, setShowDensityCalc] = useState(false);
+  const [dimLength, setDimLength] = useState("");
+  const [dimWidth, setDimWidth] = useState("");
+  const [dimHeight, setDimHeight] = useState("");
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>("lbs");
+  const [showAddCarrier, setShowAddCarrier] = useState(false);
+  const [newCarrierName, setNewCarrierName] = useState("");
+  const [newCarrierScac, setNewCarrierScac] = useState("");
+  const [newCarrierPhone, setNewCarrierPhone] = useState("");
+  const [newCarrierService, setNewCarrierService] = useState<CarrierServiceType>("LTL");
+  const [savingCarrier, setSavingCarrier] = useState(false);
   const [isCrossBorder, setIsCrossBorder] = useState(false);
   const [papsParsBarcode, setPapsParsBarcode] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
@@ -170,6 +187,49 @@ export function RapidDispatchDesk() {
     setPalletCount(count);
     if (!weightManuallyOverridden) {
       setGrossWeightLbs(Math.round(count * PACKAGING_DEFAULT_LBS_PER_UNIT[packagingType]));
+    }
+  }
+
+  // --- freight class density calculator ---
+  const densityResult = useMemo(() => {
+    const l = Number(dimLength), w = Number(dimWidth), h = Number(dimHeight);
+    return calculateFreightClass(l, w, h, palletCount, grossWeightLbs);
+  }, [dimLength, dimWidth, dimHeight, palletCount, grossWeightLbs]);
+
+  function applyCalculatedClass() {
+    if (densityResult) setFreightClass(densityResult.freightClass);
+    setShowDensityCalc(false);
+  }
+
+  // --- lbs/kg dual weight ---
+  function handleWeightChange(value: number, unit: WeightUnit) {
+    setWeightManuallyOverridden(true);
+    setGrossWeightLbs(unit === "lbs" ? value : kgToLbs(value));
+  }
+  const grossWeightKg = lbsToKg(grossWeightLbs);
+
+  // --- quick add carrier ---
+  async function handleAddCarrier() {
+    if (!newCarrierName.trim()) return;
+    setSavingCarrier(true);
+    try {
+      const carrier = await api.createCarrier<{ id: string; carrierName: string }>({
+        orgId: ORG_ID,
+        carrierName: newCarrierName,
+        accountNumber: "PENDING", // placeholder — real account number set later in Carrier Desk
+        scacCode: newCarrierScac || undefined,
+        emergencyPhone: newCarrierPhone || undefined,
+        carrierMode: "road",
+        serviceType: newCarrierService,
+      });
+      setCarriers((prev) => [...prev, { id: carrier.id, carrierName: carrier.carrierName, cutoffTimezone: "America/Los_Angeles", urgency: "unknown" }]);
+      setSelectedCarrierId(carrier.id);
+      setShowAddCarrier(false);
+      setNewCarrierName("");
+      setNewCarrierScac("");
+      setNewCarrierPhone("");
+    } finally {
+      setSavingCarrier(false);
     }
   }
 
@@ -261,6 +321,12 @@ export function RapidDispatchDesk() {
     if (!confirm(`Void staging for ${record.bolNumber ?? record.id}?`)) return;
     await api.cancelDispatchStaging(record.id);
     loadQueue();
+  }
+
+  async function handleDelete(record: OutboundStagingRecord) {
+    if (!confirm(`Permanently delete staging for ${record.bolNumber ?? record.id}? This cannot be undone.`)) return;
+    await api.deleteDispatchStaging(record.id);
+    setStaging((prev) => prev.filter((s) => s.id !== record.id));
   }
 
   async function handleOpenMagicLink(record: OutboundStagingRecord) {
@@ -371,20 +437,47 @@ export function RapidDispatchDesk() {
                   <ScanField label="" value={String(palletCount)} onChange={(v) => handlePalletCountChange(Number(v) || 0)} flashing={flashField === "pallet"} type="number" />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Gross Weight (lbs)</span>
+                  <span className="mb-1 flex items-center justify-between text-xs font-medium text-slate-500">
+                    Gross Weight
+                    <span className="flex rounded-md border border-slate-200 text-[10px] font-semibold">
+                      <button type="button" onClick={() => setWeightUnit("lbs")} className={`px-1.5 py-0.5 ${weightUnit === "lbs" ? "bg-slate-900 text-white" : "text-slate-500"}`}>lbs</button>
+                      <button type="button" onClick={() => setWeightUnit("kg")} className={`px-1.5 py-0.5 ${weightUnit === "kg" ? "bg-slate-900 text-white" : "text-slate-500"}`}>kg</button>
+                    </span>
+                  </span>
                   <input
                     type="number"
-                    value={grossWeightLbs}
-                    onChange={(e) => {
-                      setGrossWeightLbs(Number(e.target.value) || 0);
-                      setWeightManuallyOverridden(true);
-                    }}
+                    value={weightUnit === "lbs" ? grossWeightLbs : grossWeightKg}
+                    onChange={(e) => handleWeightChange(Number(e.target.value) || 0, weightUnit)}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                   />
+                  <span className="mt-0.5 block text-[10px] text-slate-400">{weightUnit === "lbs" ? `${grossWeightKg.toLocaleString()} kg` : `${grossWeightLbs.toLocaleString()} lbs`}</span>
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-500">Freight Class</span>
-                  <input value={freightClass} onChange={(e) => setFreightClass(e.target.value)} placeholder="e.g. 85" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400" />
+                  <div className="relative flex gap-1">
+                    <input value={freightClass} onChange={(e) => setFreightClass(e.target.value)} placeholder="e.g. 85" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400" />
+                    <button type="button" onClick={() => setShowDensityCalc((v) => !v)} title="Density calculator" className="rounded-lg border border-slate-200 px-2 text-slate-500 hover:bg-slate-50">
+                      <Calculator size={14} />
+                    </button>
+                    {showDensityCalc && (
+                      <div className="absolute right-0 top-full z-10 mt-1 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+                        <p className="mb-2 text-xs font-semibold text-slate-600">Density Calculator (NMFC)</p>
+                        <div className="mb-2 grid grid-cols-3 gap-1">
+                          <input value={dimLength} onChange={(e) => setDimLength(e.target.value)} placeholder="L (in)" className="rounded border border-slate-200 px-2 py-1 text-xs" />
+                          <input value={dimWidth} onChange={(e) => setDimWidth(e.target.value)} placeholder="W (in)" className="rounded border border-slate-200 px-2 py-1 text-xs" />
+                          <input value={dimHeight} onChange={(e) => setDimHeight(e.target.value)} placeholder="H (in)" className="rounded border border-slate-200 px-2 py-1 text-xs" />
+                        </div>
+                        {densityResult && (
+                          <p className="mb-2 text-xs text-slate-500">
+                            {densityResult.densityPcf} PCF → <strong className="text-slate-800">Class {densityResult.freightClass}</strong>
+                          </p>
+                        )}
+                        <button onClick={applyCalculatedClass} disabled={!densityResult} className="w-full rounded-md bg-slate-900 py-1.5 text-xs font-semibold text-white disabled:opacity-40">
+                          Apply Calculated Class
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </label>
               </div>
 
@@ -415,7 +508,12 @@ export function RapidDispatchDesk() {
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Carrier</span>
+                  <span className="mb-1 flex items-center justify-between text-xs font-medium text-slate-500">
+                    Carrier
+                    <button type="button" onClick={() => setShowAddCarrier(true)} className="flex items-center gap-0.5 text-cyan-700 hover:underline">
+                      <Plus size={11} /> Add New Carrier
+                    </button>
+                  </span>
                   <select value={selectedCarrierId} onChange={(e) => setSelectedCarrierId(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400">
                     <option value="">— Select carrier —</option>
                     {carriers.map((c) => (
@@ -504,6 +602,9 @@ export function RapidDispatchDesk() {
                     <button onClick={() => handlePrintLabel(s)} disabled={printing === s.id} className="flex items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
                       <Printer size={12} /> {printing === s.id ? "Printing…" : "Dispatch & Print"}
                     </button>
+                    <button onClick={() => handleDelete(s)} title="Delete permanently" className="rounded-md border border-rose-300 bg-rose-50 p-1.5 text-rose-600 hover:bg-rose-100">
+                      <Trash2 size={13} />
+                    </button>
                     <button onClick={() => handleCancel(s)} title="Void staging" className="rounded-md border border-rose-200 p-1.5 text-rose-500 hover:bg-rose-50">
                       <Ban size={13} />
                     </button>
@@ -536,6 +637,32 @@ export function RapidDispatchDesk() {
             ) : (
               <p className="py-10 text-xs text-slate-400">Generating…</p>
             )}
+          </div>
+        </div>
+      )}
+      {/* Add New Carrier modal */}
+      {showAddCarrier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAddCarrier(false)}>
+          <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-bold text-slate-900">Add New Carrier</p>
+              <button onClick={() => setShowAddCarrier(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
+                <X size={15} />
+              </button>
+            </div>
+            <div className="space-y-2.5">
+              <input value={newCarrierName} onChange={(e) => setNewCarrierName(e.target.value)} placeholder="Carrier Name" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+              <input value={newCarrierScac} onChange={(e) => setNewCarrierScac(e.target.value)} placeholder="SCAC Code" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+              <input value={newCarrierPhone} onChange={(e) => setNewCarrierPhone(e.target.value)} placeholder="Contact / Dispatch Phone" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+              <select value={newCarrierService} onChange={(e) => setNewCarrierService(e.target.value as CarrierServiceType)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <option value="LTL">LTL</option>
+                <option value="FTL">FTL</option>
+                <option value="Reefer">Reefer</option>
+              </select>
+            </div>
+            <button onClick={handleAddCarrier} disabled={savingCarrier || !newCarrierName.trim()} className="mt-4 w-full rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+              {savingCarrier ? "Saving…" : "Save & Select Carrier"}
+            </button>
           </div>
         </div>
       )}

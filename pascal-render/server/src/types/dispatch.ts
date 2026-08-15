@@ -56,3 +56,5 @@ export interface MagicUploadTokenResult {
   qrCodeDataUri: string;
   expiresAtIso: string;
 }
+
+export type CarrierServiceType = "LTL" | "FTL" | "Reefer";

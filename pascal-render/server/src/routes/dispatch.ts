@@ -224,6 +224,14 @@ export function createDispatchRouter(): Router {
     return res.status(200).json(rowToStaging(result.rows[0]));
   });
 
+  // Hard delete — distinct from /cancel above (soft, keeps history). This
+  // actually removes the row, for shipments staged in error.
+  router.delete("/dispatch/staging/:id", async (req: Request, res: Response) => {
+    const result = await pool.query(`DELETE FROM outbound_staging WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Staged shipment not found." });
+    return res.status(200).json({ deleted: true, id: req.params.id });
+  });
+
   router.post("/dispatch/staging/:id/send-gate-sms", async (req: Request, res: Response) => {
     const { driverPhone, message } = req.body as { driverPhone?: string; message?: string };
     const existing = await pool.query(

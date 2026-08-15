@@ -1,4 +1,4 @@
-export type TransportMode = "road" | "ocean" | "air";
+export type TransportMode = "road" | "rail" | "ocean" | "air";
 
 export type StatusChip = "paps_pars_released" | "customs_hold_flagged" | "vessel_en_route" | "flight_departed" | "in_transit" | "delivered";
 

@@ -26,12 +26,17 @@ export function createShipmentsRouter(wsManager: WsManager): Router {
     }
 
     const normalizedPayload: NewShipmentPayload = {
+      transportMode: payload.transportMode,
+      poNumber: payload.poNumber,
+      routing: payload.routing,
       shipper: payload.shipper,
       consignee: payload.consignee,
       cargo: { ...payload.cargo, handlingUnits: payload.cargo.handlingUnits ?? [], isHazmat: payload.cargo.isHazmat ?? false },
       customs: { ...payload.customs, pgaFlags: payload.customs.pgaFlags ?? [] },
       billing: payload.billing,
       readyDateIso: payload.readyDateIso,
+      pickupWindow: payload.pickupWindow,
+      deliveryWindow: payload.deliveryWindow,
       source: payload.source ?? "manual_operator",
     };
 

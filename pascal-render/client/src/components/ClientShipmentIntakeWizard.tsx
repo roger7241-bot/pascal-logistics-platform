@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   X,
   Truck,
+  TrainFront,
   Ship,
   Plane,
   ChevronLeft,
@@ -28,7 +29,7 @@ interface SavedFacility {
   contactPhoneE164?: string;
 }
 
-type TransportMode = "road" | "ocean" | "air";
+type TransportMode = "road" | "rail" | "ocean" | "air";
 type WizardStep = 1 | 2 | 3 | 4;
 
 interface HandlingUnitForm {
@@ -51,6 +52,10 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
   // Step 1 — mode & routing
   const [mode, setMode] = useState<TransportMode>("road");
   const [borderCrossing, setBorderCrossing] = useState("Pacific Highway");
+  const [railRampOrigin, setRailRampOrigin] = useState("CN Surrey");
+  const [railRampDestination, setRailRampDestination] = useState("");
+  const [containerNumber, setContainerNumber] = useState("");
+  const [chassisNumber, setChassisNumber] = useState("");
   const [portOfLoading, setPortOfLoading] = useState("");
   const [portOfDischarge, setPortOfDischarge] = useState("");
   const [originIata, setOriginIata] = useState("");
@@ -72,10 +77,17 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
   const consigneeFacility = savedFacilities.find((f) => f.id === selectedConsigneeId);
 
   // Step 2 — cargo & compliance
+  const [poNumber, setPoNumber] = useState("");
   const [handlingUnits, setHandlingUnits] = useState<HandlingUnitForm[]>([{ quantity: "", packagingType: "pallet", lengthIn: "", widthIn: "", heightIn: "" }]);
   const [totalWeightLbs, setTotalWeightLbs] = useState("");
+  const [weightUnit, setWeightUnit] = useState<"lbs" | "kg">("lbs");
+  const [totalCartons, setTotalCartons] = useState("");
+  const [freightClass, setFreightClass] = useState("");
+  const [equipmentType, setEquipmentType] = useState<"dry_van_53" | "dry_van_48" | "reefer_53" | "flatbed_48" | "stepdeck" | "ltl_pallet">("dry_van_53");
+  const [tailgateRequired, setTailgateRequired] = useState(false);
   const [reeferEnabled, setReeferEnabled] = useState(false);
   const [reeferTempF, setReeferTempF] = useState("");
+  const [reeferTempUnit, setReeferTempUnit] = useState<"F" | "C">("F");
   const [invoiceValue, setInvoiceValue] = useState("");
   const [currency, setCurrency] = useState<"USD" | "CAD" | "EUR">("USD");
   const [htsCode, setHtsCode] = useState("");
@@ -83,6 +95,14 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
   const [isHazmat, setIsHazmat] = useState(false);
   const [unNumber, setUnNumber] = useState("");
   const [hazardClass, setHazardClass] = useState("");
+  const [packingGroup, setPackingGroup] = useState<"I" | "II" | "III">("II");
+  const [customsBrokerName, setCustomsBrokerName] = useState("");
+  const [papsParsBarcode, setPapsParsBarcode] = useState("");
+  const [pickupDate, setPickupDate] = useState("");
+  const [pickupStart, setPickupStart] = useState("");
+  const [pickupEnd, setPickupEnd] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState("");
+  const [strictAppointment, setStrictAppointment] = useState(false);
 
   // Step 3 — document parsing
   const [parsing, setParsing] = useState(false);
@@ -136,6 +156,7 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
           (shipperFacility || shipperName.trim()) &&
             (consigneeFacility || consigneeName.trim()) &&
             (mode !== "road" || borderCrossing) &&
+            (mode !== "rail" || (railRampOrigin && railRampDestination)) &&
             (mode !== "ocean" || (portOfLoading && portOfDischarge)) &&
             (mode !== "air" || (originIata && destIata)),
         )
@@ -149,8 +170,13 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
 
     const payload = {
       transportMode: mode,
+      poNumber: poNumber || undefined,
       routing: {
         borderCrossing: mode === "road" ? borderCrossing : undefined,
+        railRampOrigin: mode === "rail" ? railRampOrigin : undefined,
+        railRampDestination: mode === "rail" ? railRampDestination : undefined,
+        containerNumber: mode === "rail" ? containerNumber : undefined,
+        chassisNumber: mode === "rail" ? chassisNumber : undefined,
         portOfLoading: mode === "ocean" ? portOfLoading : undefined,
         portOfDischarge: mode === "ocean" ? portOfDischarge : undefined,
         originAirportIata: mode === "air" ? originIata : undefined,
@@ -166,10 +192,17 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
         handlingUnits: handlingUnits
           .filter((u) => u.quantity)
           .map((u) => ({ quantity: Number(u.quantity), packagingType: u.packagingType })),
-        totalWeightLbs: Number(totalWeightLbs),
+        totalWeightLbs: weightUnit === "lbs" ? Number(totalWeightLbs) : Math.round(Number(totalWeightLbs) * 2.20462 * 100) / 100,
+        totalWeightKg: weightUnit === "kg" ? Number(totalWeightLbs) : Math.round((Number(totalWeightLbs) / 2.20462) * 100) / 100,
+        totalCartons: totalCartons ? Number(totalCartons) : undefined,
+        freightClass: freightClass || undefined,
+        mode: mode === "road" ? (handlingUnits.length > 1 || Number(totalWeightLbs) > 10000 ? "FTL" : "LTL") : undefined,
+        equipmentType: mode === "road" ? equipmentType : undefined,
+        tailgateRequired: mode === "road" ? tailgateRequired : undefined,
         isHazmat,
-        hazmat: isHazmat ? { unNumber, hazardClass } : undefined,
-        reeferTempF: reeferEnabled ? Number(reeferTempF) : undefined,
+        hazmat: isHazmat ? { unNumber, hazardClass, packingGroup } : undefined,
+        reeferTempF: reeferEnabled && reeferTempUnit === "F" ? Number(reeferTempF) : undefined,
+        reeferTempC: reeferEnabled && reeferTempUnit === "C" ? Number(reeferTempF) : undefined,
       },
       customs: {
         portOfEntry: mode === "road" ? borderCrossing : undefined,
@@ -178,11 +211,15 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
         htsCode,
         countryOfOrigin,
         pgaFlags: [],
+        papsParsBarcode: mode === "road" ? papsParsBarcode || undefined : undefined,
+        customsBrokerName: customsBrokerName || undefined,
       },
       billing: {
         billingTerms: billingOption === "carrier_account" ? "Prepaid" : "Third-Party",
         carrierName: billingOption === "carrier_account" ? carrierAccountName : undefined,
       },
+      pickupWindow: pickupDate ? { dateIso: pickupDate, startTime: pickupStart || undefined, endTime: pickupEnd || undefined } : undefined,
+      deliveryWindow: deliveryDate ? { dateIso: deliveryDate, strictAppointment } : undefined,
       source: "client_portal" as const,
     };
 
@@ -248,10 +285,11 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
           {step === 1 && (
             <div className="space-y-4">
               <p className="text-xs font-mono uppercase tracking-wide text-slate-500">Transport mode</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {([
-                  { id: "road" as const, icon: Truck, label: "Road & Rail" },
-                  { id: "ocean" as const, icon: Ship, label: "Ocean" },
+                  { id: "road" as const, icon: Truck, label: "Truck Freight (FTL/LTL)" },
+                  { id: "rail" as const, icon: TrainFront, label: "Intermodal Rail" },
+                  { id: "ocean" as const, icon: Ship, label: "Ocean Cargo" },
                   { id: "air" as const, icon: Plane, label: "Air Cargo" },
                 ]).map((m) => (
                   <button
@@ -325,6 +363,26 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   </select>
                 </div>
               )}
+              {mode === "rail" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-mono uppercase tracking-wide text-slate-500">Rail ramp origin</label>
+                    <input value={railRampOrigin} onChange={(e) => setRailRampOrigin(e.target.value)} placeholder="CPKC Vancouver / CN Surrey" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-mono uppercase tracking-wide text-slate-500">Rail ramp destination</label>
+                    <input value={railRampDestination} onChange={(e) => setRailRampDestination(e.target.value)} placeholder="e.g. CN Chicago" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-mono uppercase tracking-wide text-slate-500">Container #</label>
+                    <input value={containerNumber} onChange={(e) => setContainerNumber(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-mono uppercase tracking-wide text-slate-500">Chassis #</label>
+                    <input value={chassisNumber} onChange={(e) => setChassisNumber(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  </div>
+                </div>
+              )}
               {mode === "ocean" && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -386,7 +444,13 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-mono uppercase tracking-wide text-slate-500">Total gross weight (lbs)</label>
+                  <label className="mb-1 flex items-center justify-between text-xs font-mono uppercase tracking-wide text-slate-500">
+                    Total gross weight
+                    <span className="flex rounded border border-slate-300 text-[10px] font-semibold normal-case">
+                      <button type="button" onClick={() => setWeightUnit("lbs")} className={`px-1.5 py-0.5 ${weightUnit === "lbs" ? "bg-slate-900 text-white" : "text-slate-500"}`}>lbs</button>
+                      <button type="button" onClick={() => setWeightUnit("kg")} className={`px-1.5 py-0.5 ${weightUnit === "kg" ? "bg-slate-900 text-white" : "text-slate-500"}`}>kg</button>
+                    </span>
+                  </label>
                   <input value={totalWeightLbs} onChange={(e) => setTotalWeightLbs(e.target.value)} placeholder="8000" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
                 </div>
                 <div className="flex items-end gap-2">
@@ -395,10 +459,49 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                     Temperature control
                   </label>
                   {reeferEnabled && (
-                    <input value={reeferTempF} onChange={(e) => setReeferTempF(e.target.value)} placeholder="°F" className="w-20 rounded-md border border-slate-300 px-2 py-2 text-sm" />
+                    <>
+                      <input value={reeferTempF} onChange={(e) => setReeferTempF(e.target.value)} placeholder={`°${reeferTempUnit}`} className="w-16 rounded-md border border-slate-300 px-2 py-2 text-sm" />
+                      <select value={reeferTempUnit} onChange={(e) => setReeferTempUnit(e.target.value as "F" | "C")} className="rounded-md border border-slate-300 px-1 py-2 text-xs">
+                        <option>F</option>
+                        <option>C</option>
+                      </select>
+                    </>
                   )}
                 </div>
               </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-mono uppercase tracking-wide text-slate-500">PO / Order #</label>
+                  <input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-mono uppercase tracking-wide text-slate-500">Total cartons</label>
+                  <input value={totalCartons} onChange={(e) => setTotalCartons(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-mono uppercase tracking-wide text-slate-500">NMFC freight class</label>
+                  <input value={freightClass} onChange={(e) => setFreightClass(e.target.value)} placeholder="e.g. 85" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {mode === "road" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-mono uppercase tracking-wide text-slate-500">Equipment type</label>
+                    <select value={equipmentType} onChange={(e) => setEquipmentType(e.target.value as typeof equipmentType)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                      <option value="dry_van_53">53' Dry Van</option>
+                      <option value="reefer_53">53' Reefer</option>
+                      <option value="flatbed_48">Flatbed</option>
+                      <option value="stepdeck">Step Deck</option>
+                    </select>
+                  </div>
+                  <label className="flex items-end gap-2 pb-2 text-xs text-slate-600">
+                    <input type="checkbox" checked={tailgateRequired} onChange={(e) => setTailgateRequired(e.target.checked)} className="rounded border-slate-300" />
+                    Tailgate required
+                  </label>
+                </div>
+              )}
 
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Customs compliance</p>
@@ -430,11 +533,52 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   </div>
                 </div>
                 {isHazmat && (
-                  <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
+                  <div className="mt-3 grid grid-cols-3 gap-3 border-t border-slate-200 pt-3">
                     <input value={unNumber} onChange={(e) => setUnNumber(e.target.value)} placeholder="UN Number" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
                     <input value={hazardClass} onChange={(e) => setHazardClass(e.target.value)} placeholder="Hazard Class (1-9)" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <select value={packingGroup} onChange={(e) => setPackingGroup(e.target.value as typeof packingGroup)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                      <option value="I">Packing Group I</option>
+                      <option value="II">Packing Group II</option>
+                      <option value="III">Packing Group III</option>
+                    </select>
                   </div>
                 )}
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Customs broker &amp; scheduling</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Broker of record</label>
+                    <input value={customsBrokerName} onChange={(e) => setCustomsBrokerName(e.target.value)} placeholder="e.g. Livingston International" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  </div>
+                  {mode === "road" && (
+                    <div>
+                      <label className="mb-1 block text-xs text-slate-500">PAPS/PARS barcode #</label>
+                      <input value={papsParsBarcode} onChange={(e) => setPapsParsBarcode(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Pickup window</label>
+                    <div className="flex gap-1">
+                      <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} className="flex-1 rounded-md border border-slate-300 px-2 py-2 text-xs" />
+                      <input type="time" value={pickupStart} onChange={(e) => setPickupStart(e.target.value)} className="w-20 rounded-md border border-slate-300 px-2 py-2 text-xs" />
+                      <input type="time" value={pickupEnd} onChange={(e) => setPickupEnd(e.target.value)} className="w-20 rounded-md border border-slate-300 px-2 py-2 text-xs" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Delivery window</label>
+                    <div className="flex items-center gap-2">
+                      <input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className="flex-1 rounded-md border border-slate-300 px-2 py-2 text-xs" />
+                      <label className="flex items-center gap-1 whitespace-nowrap text-xs text-slate-600">
+                        <input type="checkbox" checked={strictAppointment} onChange={(e) => setStrictAppointment(e.target.checked)} className="rounded border-slate-300" />
+                        Strict
+                      </label>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}

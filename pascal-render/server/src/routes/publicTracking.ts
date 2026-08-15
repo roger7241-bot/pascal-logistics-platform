@@ -8,12 +8,13 @@
 
 import { Router, type Request, type Response } from "express";
 import { SAMPLE_SHIPMENTS } from "./client.js";
-import type { RoadMilestone, OceanMilestone, AirMilestone, TransportMode } from "../types/shipment.js";
+import type { RoadMilestone, RailMilestone, OceanMilestone, AirMilestone, TransportMode } from "../types/shipment.js";
 import type { PublicTrackingPayload } from "../types/cx.js";
 
 // Real order from the type declarations in types/shipment.ts — not invented.
 const MILESTONE_SEQUENCE: Record<TransportMode, string[]> = {
   road: ["pickup", "export_manifest", "poe_inspection", "paps_pars_release", "delivery"] satisfies RoadMilestone[],
+  rail: ["pickup", "rail_ramp_origin_gate_in", "rail_transit", "rail_ramp_destination_arrival", "drayage_delivery"] satisfies RailMilestone[],
   ocean: ["container_loaded", "port_origin_gate_in", "vessel_departure", "transshipment", "port_destination_arrival", "customs_clearance", "drayage_delivery"] satisfies OceanMilestone[],
   air: ["acceptance_at_terminal", "customs_export_release", "flight_departure", "import_airport_arrival", "pga_customs_clearance", "final_mile_delivery"] satisfies AirMilestone[],
 };

@@ -27,17 +27,30 @@ export interface HazmatDetails {
   unNumber?: string;
   properShippingName?: string;
   hazardClass?: string;
-  packingGroup?: string;
+  packingGroup?: "I" | "II" | "III";
   emergencyPhone?: string;
   sdsAttached?: boolean;
+}
+
+export interface TimeWindow {
+  dateIso?: string;
+  startTime?: string; // "HH:MM"
+  endTime?: string;
+  strictAppointment?: boolean; // delivery-window only in practice, harmless on pickup
 }
 
 export interface CargoDetails {
   handlingUnits: HandlingUnit[];
   totalWeightLbs?: number;
+  totalWeightKg?: number;
+  totalPallets?: number;
+  totalCartons?: number;
+  freightClass?: string; // NMFC
   mode?: "LTL" | "FTL";
   equipmentType?: "dry_van_53" | "dry_van_48" | "reefer_53" | "flatbed_48" | "stepdeck" | "ltl_pallet";
   reeferTempF?: number;
+  reeferTempC?: number;
+  tailgateRequired?: boolean;
   isHazmat: boolean;
   hazmat?: HazmatDetails;
 }
@@ -52,6 +65,8 @@ export interface CustomsDetails {
   importerOfRecordName?: string;
   importerTaxId?: string;
   pgaFlags: string[];
+  papsParsBarcode?: string;
+  customsBrokerName?: string;
 }
 
 export interface BillingDetails {
@@ -62,8 +77,13 @@ export interface BillingDetails {
 }
 
 export interface ModeSpecificRouting {
-  // Road
+  // Road / Truck
   borderCrossing?: string;
+  // Intermodal Rail
+  railRampOrigin?: string;
+  railRampDestination?: string;
+  containerNumber?: string;
+  chassisNumber?: string;
   // Ocean
   portOfLoading?: string;
   portOfDischarge?: string;
@@ -77,6 +97,7 @@ export interface ModeSpecificRouting {
 /** The canonical inbound payload shape for POST /api/shipments/ingest. */
 export interface NewShipmentPayload {
   transportMode?: TransportMode;
+  poNumber?: string;
   routing?: ModeSpecificRouting;
   shipper: PartyDetails;
   consignee: PartyDetails;
@@ -84,6 +105,8 @@ export interface NewShipmentPayload {
   customs: CustomsDetails;
   billing: BillingDetails;
   readyDateIso?: string;
+  pickupWindow?: TimeWindow;
+  deliveryWindow?: TimeWindow;
   source: "client_portal" | "email_intake" | "manual_operator";
 }
 
@@ -110,13 +133,14 @@ export interface PipelineResult {
   createdAtIso: string;
 }
 
-export type TransportMode = "road" | "ocean" | "air";
+export type TransportMode = "road" | "rail" | "ocean" | "air";
 
 export type RoadMilestone = "pickup" | "export_manifest" | "poe_inspection" | "paps_pars_release" | "delivery";
+export type RailMilestone = "pickup" | "rail_ramp_origin_gate_in" | "rail_transit" | "rail_ramp_destination_arrival" | "drayage_delivery";
 export type OceanMilestone = "container_loaded" | "port_origin_gate_in" | "vessel_departure" | "transshipment" | "port_destination_arrival" | "customs_clearance" | "drayage_delivery";
 export type AirMilestone = "acceptance_at_terminal" | "customs_export_release" | "flight_departure" | "import_airport_arrival" | "pga_customs_clearance" | "final_mile_delivery";
 
-export type ShipmentMilestone = RoadMilestone | OceanMilestone | AirMilestone;
+export type ShipmentMilestone = RoadMilestone | RailMilestone | OceanMilestone | AirMilestone;
 
 export interface ClientShipmentSummary {
   id: string;

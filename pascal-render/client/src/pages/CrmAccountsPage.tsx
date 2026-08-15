@@ -13,14 +13,29 @@ interface Account {
   primaryContactEmail?: string;
   operationsManagerName?: string;
   apEmail?: string;
+  apContactName?: string;
   usEin?: string;
+  usDotNumber?: string;
+  mcFfNumber?: string;
   caBn?: string;
+  caBnProgramSuffix?: string;
   mxRfc?: string;
   countryOfIncorporation?: string;
   retainerMonthlyUsd?: number;
+  overageRateUsd?: number;
   billingCurrency: string;
   paymentTerms: string;
   houseSpotBenchmarkOptIn: boolean;
+  customsBrokerName?: string;
+  customsBrokerAccountRef?: string;
+  customsBrokerEmail?: string;
+  customsBrokerOpsPhone?: string;
+  customsPoaStatus?: "active_verified" | "pending_signature" | "exempt";
+  defaultPoePreference?: string;
+  primaryCommodities: string[];
+  requiresReefer: boolean;
+  requiresHazmat: boolean;
+  preferredCarrierScacs: string[];
   accountStatus: string;
   facilityCount: number;
   poaStatus: string;
@@ -84,8 +99,25 @@ export function CrmAccountsPage() {
   const [primaryContactPhone, setPrimaryContactPhone] = useState("");
   const [countryOfIncorporation, setCountryOfIncorporation] = useState("US");
   const [taxIdField, setTaxIdField] = useState("");
+  const [usDotNumber, setUsDotNumber] = useState("");
+  const [mcFfNumber, setMcFfNumber] = useState("");
+  const [caBnProgramSuffix, setCaBnProgramSuffix] = useState("RM0001");
+  const [customsBrokerName, setCustomsBrokerName] = useState("");
+  const [customsBrokerAccountRef, setCustomsBrokerAccountRef] = useState("");
+  const [customsBrokerEmail, setCustomsBrokerEmail] = useState("");
+  const [customsBrokerOpsPhone, setCustomsBrokerOpsPhone] = useState("");
+  const [customsPoaStatus, setCustomsPoaStatus] = useState<"active_verified" | "pending_signature" | "exempt">("pending_signature");
+  const [defaultPoePreference, setDefaultPoePreference] = useState("");
   const [billingCurrency, setBillingCurrency] = useState("USD");
   const [retainerMonthlyUsd, setRetainerMonthlyUsd] = useState("");
+  const [overageRateUsd, setOverageRateUsd] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState<"net15" | "net30" | "due_upon_receipt">("net30");
+  const [apContactName, setApContactName] = useState("");
+  const [apEmail, setApEmail] = useState("");
+  const [primaryCommoditiesInput, setPrimaryCommoditiesInput] = useState("");
+  const [requiresReefer, setRequiresReefer] = useState(false);
+  const [requiresHazmat, setRequiresHazmat] = useState(false);
+  const [preferredCarrierScacsInput, setPreferredCarrierScacsInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const load = () => {
@@ -116,7 +148,14 @@ export function CrmAccountsPage() {
     if (!orgId.trim() || !companyName.trim()) return;
     setSubmitting(true);
     try {
-      const taxField = countryOfIncorporation === "US" ? { usEin: taxIdField } : countryOfIncorporation === "CA" ? { caBn: taxIdField } : countryOfIncorporation === "MX" ? { mxRfc: taxIdField } : {};
+      const taxField =
+        countryOfIncorporation === "US"
+          ? { usEin: taxIdField, usDotNumber: usDotNumber || undefined, mcFfNumber: mcFfNumber || undefined }
+          : countryOfIncorporation === "CA"
+          ? { caBn: taxIdField, caBnProgramSuffix: caBnProgramSuffix || undefined }
+          : countryOfIncorporation === "MX"
+          ? { mxRfc: taxIdField }
+          : {};
       await api.createAccount({
         orgId,
         companyName,
@@ -126,6 +165,20 @@ export function CrmAccountsPage() {
         countryOfIncorporation,
         billingCurrency,
         retainerMonthlyUsd: retainerMonthlyUsd ? Number(retainerMonthlyUsd) : undefined,
+        overageRateUsd: overageRateUsd ? Number(overageRateUsd) : undefined,
+        paymentTerms,
+        apContactName: apContactName || undefined,
+        apEmail: apEmail || undefined,
+        customsBrokerName: customsBrokerName || undefined,
+        customsBrokerAccountRef: customsBrokerAccountRef || undefined,
+        customsBrokerEmail: customsBrokerEmail || undefined,
+        customsBrokerOpsPhone: customsBrokerOpsPhone || undefined,
+        customsPoaStatus,
+        defaultPoePreference: defaultPoePreference || undefined,
+        primaryCommodities: primaryCommoditiesInput.split(",").map((s) => s.trim()).filter(Boolean),
+        requiresReefer,
+        requiresHazmat,
+        preferredCarrierScacs: preferredCarrierScacsInput.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
         ...taxField,
       });
       setOrgId("");
@@ -134,7 +187,21 @@ export function CrmAccountsPage() {
       setPrimaryContactEmail("");
       setPrimaryContactPhone("");
       setTaxIdField("");
+      setUsDotNumber("");
+      setMcFfNumber("");
+      setCustomsBrokerName("");
+      setCustomsBrokerAccountRef("");
+      setCustomsBrokerEmail("");
+      setCustomsBrokerOpsPhone("");
+      setDefaultPoePreference("");
       setRetainerMonthlyUsd("");
+      setOverageRateUsd("");
+      setApContactName("");
+      setApEmail("");
+      setPrimaryCommoditiesInput("");
+      setPreferredCarrierScacsInput("");
+      setRequiresReefer(false);
+      setRequiresHazmat(false);
       setModalOpen(false);
       load();
     } finally {
@@ -273,13 +340,69 @@ export function CrmAccountsPage() {
                       </p>
                       <p>
                         <strong>Country of incorporation:</strong> {detail.account.countryOfIncorporation ?? "—"}
+                        {detail.account.usEin && ` · EIN ${detail.account.usEin}`}
+                        {detail.account.usDotNumber && ` · DOT ${detail.account.usDotNumber}`}
+                        {detail.account.mcFfNumber && ` · MC/FF ${detail.account.mcFfNumber}`}
+                        {detail.account.caBn && ` · BN ${detail.account.caBn}${detail.account.caBnProgramSuffix ? ` ${detail.account.caBnProgramSuffix}` : ""}`}
                       </p>
                       <p>
                         <strong>Retainer:</strong> {detail.account.billingCurrency} ${detail.account.retainerMonthlyUsd?.toLocaleString() ?? "—"}/mo · {detail.account.paymentTerms}
+                        {detail.account.overageRateUsd !== undefined && ` · overage $${detail.account.overageRateUsd}/shipment`}
                       </p>
+                      {detail.account.apContactName && (
+                        <p>
+                          <strong>Billing contact:</strong> {detail.account.apContactName}
+                        </p>
+                      )}
                       <p>
                         <strong>House spot benchmark opt-in:</strong> {detail.account.houseSpotBenchmarkOptIn ? "Yes" : "No"}
                       </p>
+
+                      <div className="mt-3 border-t border-slate-100 pt-3">
+                        <p className="mb-1.5 text-xs font-mono uppercase tracking-wide text-slate-400">Customs Broker &amp; POA</p>
+                        <p>
+                          <strong>Broker:</strong> {detail.account.customsBrokerName ?? "—"}
+                          {detail.account.customsBrokerAccountRef && ` (ref ${detail.account.customsBrokerAccountRef})`}
+                        </p>
+                        {(detail.account.customsBrokerEmail || detail.account.customsBrokerOpsPhone) && (
+                          <p>
+                            <strong>Contact:</strong> {detail.account.customsBrokerEmail ?? "—"} {detail.account.customsBrokerOpsPhone && `· ${detail.account.customsBrokerOpsPhone}`}
+                          </p>
+                        )}
+                        <p>
+                          <strong>POA status:</strong>{" "}
+                          {detail.account.customsPoaStatus === "active_verified"
+                            ? "Active & Verified"
+                            : detail.account.customsPoaStatus === "pending_signature"
+                            ? "Pending Signature"
+                            : detail.account.customsPoaStatus === "exempt"
+                            ? "Exempt"
+                            : "—"}
+                          {detail.account.defaultPoePreference && ` · Default POE: ${detail.account.defaultPoePreference}`}
+                        </p>
+                      </div>
+
+                      {(detail.account.primaryCommodities.length > 0 || detail.account.preferredCarrierScacs.length > 0 || detail.account.requiresReefer || detail.account.requiresHazmat) && (
+                        <div className="mt-3 border-t border-slate-100 pt-3">
+                          <p className="mb-1.5 text-xs font-mono uppercase tracking-wide text-slate-400">Operations Profile</p>
+                          {detail.account.primaryCommodities.length > 0 && (
+                            <p>
+                              <strong>Commodities:</strong> {detail.account.primaryCommodities.join(", ")}
+                            </p>
+                          )}
+                          {detail.account.preferredCarrierScacs.length > 0 && (
+                            <p>
+                              <strong>Preferred carriers:</strong> {detail.account.preferredCarrierScacs.join(", ")}
+                            </p>
+                          )}
+                          {(detail.account.requiresReefer || detail.account.requiresHazmat) && (
+                            <p>
+                              {detail.account.requiresReefer && <span className="mr-1 rounded-full bg-cyan-100 px-2 py-0.5 text-cyan-700">Reefer required</span>}
+                              {detail.account.requiresHazmat && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-700">Hazmat required</span>}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -353,41 +476,112 @@ export function CrmAccountsPage() {
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setModalOpen(false)}>
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <p className="text-sm font-bold">Add Account</p>
               <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-700">
                 <X size={16} />
               </button>
             </div>
-            <div className="space-y-3">
-              <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Company legal name" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              <input value={orgId} onChange={(e) => setOrgId(e.target.value)} placeholder="org_id (e.g. org_newclient)" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              <input value={primaryContactName} onChange={(e) => setPrimaryContactName(e.target.value)} placeholder="Primary contact name" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              <div className="grid grid-cols-2 gap-2">
-                <input value={primaryContactEmail} onChange={(e) => setPrimaryContactEmail(e.target.value)} placeholder="Email" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                <input value={primaryContactPhone} onChange={(e) => setPrimaryContactPhone(e.target.value)} placeholder="Phone" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <div className="space-y-4">
+              <div>
+                <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Company</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Company legal name" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={orgId} onChange={(e) => setOrgId(e.target.value)} placeholder="org_id (e.g. org_newclient)" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={primaryContactName} onChange={(e) => setPrimaryContactName(e.target.value)} placeholder="Primary contact name" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={primaryContactEmail} onChange={(e) => setPrimaryContactEmail(e.target.value)} placeholder="Email" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={primaryContactPhone} onChange={(e) => setPrimaryContactPhone(e.target.value)} placeholder="Phone" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                </div>
               </div>
-              <select value={countryOfIncorporation} onChange={(e) => setCountryOfIncorporation(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <option value="US">United States</option>
-                <option value="CA">Canada</option>
-                <option value="MX">Mexico</option>
-                <option value="INTL">International</option>
-              </select>
-              <input
-                value={taxIdField}
-                onChange={(e) => setTaxIdField(e.target.value)}
-                placeholder={countryOfIncorporation === "US" ? "US EIN" : countryOfIncorporation === "CA" ? "Canadian BN" : countryOfIncorporation === "MX" ? "Mexican RFC" : "Tax ID"}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              />
-              <div className="flex gap-1 rounded-lg border border-slate-200 p-1">
-                {(["USD", "CAD", "MXN"] as const).map((c) => (
-                  <button key={c} onClick={() => setBillingCurrency(c)} className={`flex-1 rounded-md py-1.5 text-xs font-semibold ${billingCurrency === c ? "bg-slate-900 text-white" : "text-slate-500"}`}>
-                    {c}
-                  </button>
-                ))}
+
+              {/* Jurisdiction & tax registrations — dynamic by country */}
+              <div>
+                <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Jurisdiction &amp; Tax Registrations</p>
+                <select value={countryOfIncorporation} onChange={(e) => setCountryOfIncorporation(e.target.value)} className="mb-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                  <option value="US">United States</option>
+                  <option value="CA">Canada</option>
+                  <option value="MX">Mexico</option>
+                  <option value="INTL">International</option>
+                </select>
+                {countryOfIncorporation === "US" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input value={taxIdField} onChange={(e) => setTaxIdField(e.target.value)} placeholder="US EIN (12-3456789)" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <input value={usDotNumber} onChange={(e) => setUsDotNumber(e.target.value)} placeholder="US DOT #" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <input value={mcFfNumber} onChange={(e) => setMcFfNumber(e.target.value)} placeholder="MC / FF #" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  </div>
+                )}
+                {countryOfIncorporation === "CA" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input value={taxIdField} onChange={(e) => setTaxIdField(e.target.value)} placeholder="Business Number (9 digits)" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <input value={caBnProgramSuffix} onChange={(e) => setCaBnProgramSuffix(e.target.value)} placeholder="Program suffix (RM0001)" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  </div>
+                )}
+                {countryOfIncorporation === "MX" && (
+                  <input value={taxIdField} onChange={(e) => setTaxIdField(e.target.value)} placeholder="RFC" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                )}
+                {countryOfIncorporation === "INTL" && (
+                  <input value={taxIdField} onChange={(e) => setTaxIdField(e.target.value)} placeholder="Tax ID" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                )}
               </div>
-              <input value={retainerMonthlyUsd} onChange={(e) => setRetainerMonthlyUsd(e.target.value)} placeholder="Monthly retainer amount" type="number" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+
+              {/* Customs broker of record & POA */}
+              <div>
+                <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Customs Broker of Record &amp; POA</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={customsBrokerName} onChange={(e) => setCustomsBrokerName(e.target.value)} placeholder="Broker name" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={customsBrokerAccountRef} onChange={(e) => setCustomsBrokerAccountRef(e.target.value)} placeholder="Account / client ref #" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={customsBrokerEmail} onChange={(e) => setCustomsBrokerEmail(e.target.value)} placeholder="Broker contact email" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={customsBrokerOpsPhone} onChange={(e) => setCustomsBrokerOpsPhone(e.target.value)} placeholder="24/7 operations phone" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <select value={customsPoaStatus} onChange={(e) => setCustomsPoaStatus(e.target.value as typeof customsPoaStatus)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                    <option value="active_verified">POA: Active &amp; Verified</option>
+                    <option value="pending_signature">POA: Pending Signature</option>
+                    <option value="exempt">POA: Exempt</option>
+                  </select>
+                  <input value={defaultPoePreference} onChange={(e) => setDefaultPoePreference(e.target.value)} placeholder="Default POE (e.g. Blaine 3004)" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {/* Billing, retainer & commercial terms */}
+              <div>
+                <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Billing, Retainer &amp; Commercial Terms</p>
+                <div className="mb-2 flex gap-1 rounded-lg border border-slate-200 p-1">
+                  {(["USD", "CAD", "MXN"] as const).map((c) => (
+                    <button key={c} onClick={() => setBillingCurrency(c)} className={`flex-1 rounded-md py-1.5 text-xs font-semibold ${billingCurrency === c ? "bg-slate-900 text-white" : "text-slate-500"}`}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={retainerMonthlyUsd} onChange={(e) => setRetainerMonthlyUsd(e.target.value)} placeholder="Retainer ($/mo)" type="number" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={overageRateUsd} onChange={(e) => setOverageRateUsd(e.target.value)} placeholder="Overage rate ($/shipment)" type="number" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <select value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value as typeof paymentTerms)} className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                    <option value="net15">Net 15</option>
+                    <option value="net30">Net 30</option>
+                    <option value="due_upon_receipt">Due Upon Receipt</option>
+                  </select>
+                  <input value={apContactName} onChange={(e) => setApContactName(e.target.value)} placeholder="Billing contact name (if different)" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={apEmail} onChange={(e) => setApEmail(e.target.value)} placeholder="AP email (if different)" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {/* Operations profile & defaults */}
+              <div>
+                <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Operations Profile &amp; Defaults</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={primaryCommoditiesInput} onChange={(e) => setPrimaryCommoditiesInput(e.target.value)} placeholder="Commodities / HTS Ch. (e.g. Ch. 02, Ch. 84)" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={preferredCarrierScacsInput} onChange={(e) => setPreferredCarrierScacsInput(e.target.value)} placeholder="Preferred carrier SCACs (comma-separated)" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                    <input type="checkbox" checked={requiresReefer} onChange={(e) => setRequiresReefer(e.target.checked)} className="rounded border-slate-300" />
+                    Requires temp-controlled / reefer
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                    <input type="checkbox" checked={requiresHazmat} onChange={(e) => setRequiresHazmat(e.target.checked)} className="rounded border-slate-300" />
+                    Requires hazmat
+                  </label>
+                </div>
+              </div>
+
               <button onClick={handleAdd} disabled={submitting} className="flex w-full items-center justify-center gap-1.5 rounded-md bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-60">
                 {submitting ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add account
               </button>

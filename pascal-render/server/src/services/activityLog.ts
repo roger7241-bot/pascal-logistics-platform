@@ -8,7 +8,7 @@
 
 import { pool } from "../db/pool.js";
 
-export type ActivityEventType = "paps_released" | "rate_savings_captured" | "reroute_triggered" | "executive_decision" | "shipment_ingested";
+export type ActivityEventType = "paps_released" | "rate_savings_captured" | "reroute_triggered" | "executive_decision" | "shipment_ingested" | "shipment_voided";
 
 export async function logActivity(eventType: ActivityEventType, message: string, shipmentId?: string, metadata?: unknown): Promise<void> {
   await pool.query(

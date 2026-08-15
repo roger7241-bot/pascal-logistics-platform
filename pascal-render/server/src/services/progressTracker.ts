@@ -5,7 +5,7 @@
 // milestone, returns the ordered steps with the current position marked.
 // ============================================================================
 
-import type { AirMilestone, OceanMilestone, RoadMilestone, ShipmentMilestone, TransportMode } from "../types/shipment.js";
+import type { AirMilestone, OceanMilestone, RailMilestone, RoadMilestone, ShipmentMilestone, TransportMode } from "../types/shipment.js";
 
 export interface TrackerStep {
   milestone: ShipmentMilestone;
@@ -18,6 +18,14 @@ const ROAD_STEPS: { milestone: RoadMilestone; label: string }[] = [
   { milestone: "poe_inspection", label: "POE Inspection" },
   { milestone: "paps_pars_release", label: "PAPS/PARS Release" },
   { milestone: "delivery", label: "Delivery" },
+];
+
+const RAIL_STEPS: { milestone: RailMilestone; label: string }[] = [
+  { milestone: "pickup", label: "Pickup" },
+  { milestone: "rail_ramp_origin_gate_in", label: "Rail Ramp Origin Gate-In" },
+  { milestone: "rail_transit", label: "Rail Transit" },
+  { milestone: "rail_ramp_destination_arrival", label: "Rail Ramp Destination Arrival" },
+  { milestone: "drayage_delivery", label: "Drayage Delivery" },
 ];
 
 const OCEAN_STEPS: { milestone: OceanMilestone; label: string }[] = [
@@ -41,6 +49,7 @@ const AIR_STEPS: { milestone: AirMilestone; label: string }[] = [
 
 const STEPS_BY_MODE: Record<TransportMode, TrackerStep[]> = {
   road: ROAD_STEPS,
+  rail: RAIL_STEPS,
   ocean: OCEAN_STEPS,
   air: AIR_STEPS,
 };

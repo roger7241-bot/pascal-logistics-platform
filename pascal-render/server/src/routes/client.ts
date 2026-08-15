@@ -160,6 +160,19 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     return res.status(200).json({ ...shipment, tracker: getTrackerState(shipment.transportMode, shipment.currentMilestone) });
   });
 
+  // HONEST LIMITATION: removes the entry from the same in-memory
+  // SAMPLE_SHIPMENTS array everything else in this file reads from — real
+  // within this running process (the shipment genuinely disappears from
+  // every other endpoint immediately), but doesn't survive a server
+  // restart, same as every other mutation in this file.
+  router.delete("/shipments/:id", async (req: Request, res: Response) => {
+    const index = SAMPLE_SHIPMENTS.findIndex((s) => s.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: `No shipment on file with id ${req.params.id}.` });
+    const [removed] = SAMPLE_SHIPMENTS.splice(index, 1);
+    await logActivity("shipment_voided", `${removed.id} deleted/voided from Client Portal.`, removed.id);
+    return res.status(200).json({ deleted: true, id: removed.id });
+  });
+
   router.patch("/shipments/:id/override-paps", async (req: Request, res: Response) => {
     const shipment = findShipment(req.params.id);
     if (!shipment) return res.status(404).json({ error: `No shipment on file with id ${req.params.id}.` });
