@@ -27,6 +27,11 @@ interface SavedFacility {
   countryCode: string;
   postalCode: string;
   contactPhoneE164?: string;
+  dockContactName?: string;
+  dockContactPhone?: string;
+  receivingEmail?: string;
+  receivingHoursStart?: string;
+  receivingHoursEnd?: string;
 }
 
 type TransportMode = "road" | "rail" | "ocean" | "air";
@@ -61,7 +66,11 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
   const [originIata, setOriginIata] = useState("");
   const [destIata, setDestIata] = useState("");
   const [shipperName, setShipperName] = useState("");
+  const [shipperContactName, setShipperContactName] = useState("");
+  const [shipperContactPhone, setShipperContactPhone] = useState("");
   const [consigneeName, setConsigneeName] = useState("");
+  const [consigneeContactName, setConsigneeContactName] = useState("");
+  const [consigneeContactPhone, setConsigneeContactPhone] = useState("");
   const [savedFacilities, setSavedFacilities] = useState<SavedFacility[]>([]);
   const [selectedShipperId, setSelectedShipperId] = useState("");
   const [selectedConsigneeId, setSelectedConsigneeId] = useState("");
@@ -183,11 +192,11 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
         destAirportIata: mode === "air" ? destIata : undefined,
       },
       shipper: shipperFacility
-        ? { facilityName: shipperFacility.name, phoneE164: shipperFacility.contactPhoneE164, street: shipperFacility.street, city: shipperFacility.city, countryCode: shipperFacility.countryCode, postalCode: shipperFacility.postalCode }
-        : { facilityName: shipperName },
+        ? { facilityName: shipperFacility.name, contactPerson: shipperContactName || shipperFacility.dockContactName, phoneE164: shipperContactPhone || shipperFacility.contactPhoneE164 || shipperFacility.dockContactPhone, street: shipperFacility.street, city: shipperFacility.city, countryCode: shipperFacility.countryCode, postalCode: shipperFacility.postalCode }
+        : { facilityName: shipperName, contactPerson: shipperContactName || undefined, phoneE164: shipperContactPhone || undefined },
       consignee: consigneeFacility
-        ? { facilityName: consigneeFacility.name, phoneE164: consigneeFacility.contactPhoneE164, street: consigneeFacility.street, city: consigneeFacility.city, countryCode: consigneeFacility.countryCode, postalCode: consigneeFacility.postalCode }
-        : { facilityName: consigneeName },
+        ? { facilityName: consigneeFacility.name, contactPerson: consigneeContactName || consigneeFacility.dockContactName, phoneE164: consigneeContactPhone || consigneeFacility.contactPhoneE164 || consigneeFacility.dockContactPhone, street: consigneeFacility.street, city: consigneeFacility.city, countryCode: consigneeFacility.countryCode, postalCode: consigneeFacility.postalCode }
+        : { facilityName: consigneeName, contactPerson: consigneeContactName || undefined, phoneE164: consigneeContactPhone || undefined },
       cargo: {
         handlingUnits: handlingUnits
           .filter((u) => u.quantity)
@@ -326,7 +335,19 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   ) : (
                     <input value={shipperName} onChange={(e) => setShipperName(e.target.value)} placeholder="Meridian Cold Chain" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
                   )}
-                  {shipperFacility && <p className="mt-1 text-xs text-slate-400">{shipperFacility.street}, {shipperFacility.city}</p>}
+                  {shipperFacility && (
+                    <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600">
+                      <p>{shipperFacility.street}, {shipperFacility.city}, {shipperFacility.stateOrProvince}</p>
+                      {(shipperFacility.receivingHoursStart || shipperFacility.receivingHoursEnd) && (
+                        <p className="mt-1 text-slate-500">Dock hours: {shipperFacility.receivingHoursStart ?? "—"}–{shipperFacility.receivingHoursEnd ?? "—"}</p>
+                      )}
+                      {shipperFacility.dockContactName && <p className="text-slate-500">Dock contact on file: {shipperFacility.dockContactName}{shipperFacility.dockContactPhone ? ` · ${shipperFacility.dockContactPhone}` : ""}</p>}
+                    </div>
+                  )}
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <input value={shipperContactName} onChange={(e) => setShipperContactName(e.target.value)} placeholder={shipperFacility?.dockContactName ? `Contact (default: ${shipperFacility.dockContactName})` : "Contact name"} className="rounded-md border border-slate-300 px-3 py-2 text-xs" />
+                    <input value={shipperContactPhone} onChange={(e) => setShipperContactPhone(e.target.value)} placeholder="Phone for this shipment" className="rounded-md border border-slate-300 px-3 py-2 text-xs" />
+                  </div>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-mono uppercase tracking-wide text-slate-500">Consignee facility</label>
@@ -348,7 +369,20 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   ) : (
                     <input value={consigneeName} onChange={(e) => setConsigneeName(e.target.value)} placeholder="Bellingham DC" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
                   )}
-                  {consigneeFacility && <p className="mt-1 text-xs text-slate-400">{consigneeFacility.street}, {consigneeFacility.city}</p>}
+                  {consigneeFacility && (
+                    <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600">
+                      <p>{consigneeFacility.street}, {consigneeFacility.city}, {consigneeFacility.stateOrProvince}</p>
+                      {(consigneeFacility.receivingHoursStart || consigneeFacility.receivingHoursEnd) && (
+                        <p className="mt-1 text-slate-500">Dock hours: {consigneeFacility.receivingHoursStart ?? "—"}–{consigneeFacility.receivingHoursEnd ?? "—"}</p>
+                      )}
+                      {consigneeFacility.dockContactName && <p className="text-slate-500">Dock contact on file: {consigneeFacility.dockContactName}{consigneeFacility.dockContactPhone ? ` · ${consigneeFacility.dockContactPhone}` : ""}</p>}
+                      {consigneeFacility.receivingEmail && <p className="text-slate-500">Receiving email: {consigneeFacility.receivingEmail}</p>}
+                    </div>
+                  )}
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <input value={consigneeContactName} onChange={(e) => setConsigneeContactName(e.target.value)} placeholder={consigneeFacility?.dockContactName ? `Contact (default: ${consigneeFacility.dockContactName})` : "Contact name"} className="rounded-md border border-slate-300 px-3 py-2 text-xs" />
+                    <input value={consigneeContactPhone} onChange={(e) => setConsigneeContactPhone(e.target.value)} placeholder="Phone for this shipment" className="rounded-md border border-slate-300 px-3 py-2 text-xs" />
+                  </div>
                 </div>
               </div>
 
