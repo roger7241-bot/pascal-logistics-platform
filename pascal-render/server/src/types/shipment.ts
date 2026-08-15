@@ -68,6 +68,7 @@ export interface CustomsDetails {
   pgaFlags: string[];
   papsParsBarcode?: string;
   customsBrokerName?: string;
+  documentsSentToBroker?: boolean; // self-reported by the shipper at booking time — not independently verified; Pascal confirms with the broker directly before dispatch either way
 }
 
 export interface BillingDetails {

@@ -135,6 +135,7 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
   const [pickupEnd, setPickupEnd] = useState("");
   const [dockAvailableAtPickup, setDockAvailableAtPickup] = useState<boolean | undefined>(undefined);
   const [pickupAppointmentRequired, setPickupAppointmentRequired] = useState<boolean | undefined>(undefined);
+  const [documentsSentToBroker, setDocumentsSentToBroker] = useState<boolean | undefined>(undefined);
   const [deliveryDate, setDeliveryDate] = useState("");
   const [strictAppointment, setStrictAppointment] = useState(false);
 
@@ -176,7 +177,7 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
       if (fields.commercialInvoiceValue) setInvoiceValue((v) => v || String(fields.commercialInvoiceValue));
       if (fields.htsCode) setHtsCode((v) => v || fields.htsCode);
       if (fields.countryOfOrigin) setCountryOfOrigin((v) => v || fields.countryOfOrigin);
-      setParsedFilename(result.simulated ? "pasted text (simulated — no ANTHROPIC_API_KEY configured)" : "pasted text (extracted via Claude)");
+      setParsedFilename(result.simulated ? "pasted text (simulated — no ANTHROPIC_API_KEY configured)" : "pasted text (extracted via AI)");
     } catch (err) {
       setParseError(err instanceof Error ? err.message : "Could not parse the document text.");
     } finally {
@@ -287,6 +288,7 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
         pgaFlags: [],
         papsParsBarcode: mode === "road" ? papsParsBarcode || undefined : undefined,
         customsBrokerName: customsBrokerName || undefined,
+        documentsSentToBroker,
       },
       billing: {
         billingTerms: billingOption === "carrier_account" ? "Prepaid" : "Third-Party",
@@ -918,20 +920,40 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                 {consigneeFacility ? (
                   <p className="text-xs text-slate-600">
                     Receiving hours {consigneeFacility.receivingHoursStart ?? "—"}–{consigneeFacility.receivingHoursEnd ?? "—"}.
-                    {consigneeFacility.dockContactName ? ` Dock contact: ${consigneeFacility.dockContactName}.` : ""}
+                    {consigneeFacility.dockContactName ? ` Dock contact: ${consigneeFacility.dockContactName}` : ""}
+                    {consigneeFacility.dockContactPhone ? ` · ${consigneeFacility.dockContactPhone}` : ""}
+                    {consigneeFacility.receivingEmail ? ` · ${consigneeFacility.receivingEmail}` : ""}
+                    {consigneeFacility.dockContactName ? "." : ""}
                   </p>
                 ) : (
-                  <p className="text-xs text-amber-600">No saved facility SOP on file for this consignee — confirm dock rules directly before dispatch.</p>
+                  <p className="rounded-md border border-amber-500 bg-amber-100 px-2.5 py-2 text-xs font-semibold text-amber-900">No saved facility SOP on file for this consignee — confirm dock rules directly before dispatch.</p>
                 )}
+              </div>
+
+              <div className={`rounded-lg border p-3 ${customsBrokerName.trim() ? "border-slate-400 bg-slate-50" : "border-amber-500 bg-amber-100"}`}>
+                <p className={`mb-1 text-xs font-mono uppercase tracking-wide ${customsBrokerName.trim() ? "text-slate-500" : "text-amber-900 font-bold"}`}>Customs broker confirmation</p>
+                {customsBrokerName.trim() ? (
+                  <p className="text-xs text-slate-600">Broker of record: {customsBrokerName}</p>
+                ) : (
+                  <p className="text-xs font-semibold text-amber-900">No customs broker entered in Step 2 — required for cross-border clearance. Go back and add one before submitting.</p>
+                )}
+                <div className="mt-2">
+                  <YesNoQuestion
+                    label="Has the commercial invoice & packing list been sent to the broker?"
+                    value={documentsSentToBroker}
+                    onChange={setDocumentsSentToBroker}
+                  />
+                  <p className="mt-1 text-[11px] text-slate-500">Not sure? That's fine — Pascal confirms directly with the broker before dispatch either way.</p>
+                </div>
               </div>
             </div>
           )}
 
           {step === 5 && (
             <div className="space-y-4">
-              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
-                <ShieldCheck size={15} className="mt-0.5 shrink-0 text-amber-700" />
-                <p className="text-xs text-amber-800">
+              <div className="flex items-start gap-2 rounded-lg border-2 border-amber-500 bg-amber-100 p-3">
+                <ShieldCheck size={16} className="mt-0.5 shrink-0 text-amber-900" />
+                <p className="text-xs font-semibold text-amber-900">
                   This shipment crosses an international border and cannot be corrected once dispatched. Review every field below carefully before submitting.
                 </p>
               </div>
@@ -998,7 +1020,8 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                 <ReviewRow label="HTS / HS code" value={htsCode || "—"} />
                 <ReviewRow label="Country of origin" value={COUNTRY_LABEL[countryOfOrigin] ?? countryOfOrigin} />
                 {isHazmat && <ReviewRow label="Hazmat" value={`UN${unNumber || "—"} · Class ${hazardClass || "—"} · PG ${packingGroup}`} highlight />}
-                {customsBrokerName && <ReviewRow label="Customs broker" value={customsBrokerName} />}
+                <ReviewRow label="Customs broker" value={customsBrokerName || "Not on file"} highlight={!customsBrokerName} />
+                {documentsSentToBroker !== undefined && <ReviewRow label="Invoice/packing list sent to broker" value={documentsSentToBroker ? "Yes" : "No — Pascal will confirm"} highlight={!documentsSentToBroker} />}
                 {mode === "road" && papsParsBarcode && <ReviewRow label="PAPS/PARS barcode" value={papsParsBarcode} />}
               </ReviewSection>
 
@@ -1085,7 +1108,7 @@ function ReviewRow({ label, value, highlight }: { label: string; value: string; 
   return (
     <div className="flex items-start justify-between gap-3 text-xs">
       <span className="shrink-0 text-slate-500">{label}</span>
-      <span className={`text-right font-medium ${highlight ? "text-amber-700" : "text-slate-800"}`}>{value || "—"}</span>
+      <span className={`text-right font-medium ${highlight ? "text-amber-900 font-bold" : "text-slate-800"}`}>{value || "—"}</span>
     </div>
   );
 }
