@@ -36,7 +36,8 @@ export interface TimeWindow {
   dateIso?: string;
   startTime?: string; // "HH:MM"
   endTime?: string;
-  strictAppointment?: boolean; // delivery-window only in practice, harmless on pickup
+  strictAppointment?: boolean; // "an appointment is required" — used on both pickup and delivery windows
+  dockAvailable?: boolean; // pickup-window only in practice: does the shipper's facility have a dock, or is this a residential/no-dock pickup?
 }
 
 export interface CargoDetails {

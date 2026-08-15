@@ -36,6 +36,7 @@ export function calculateFreightClass(lengthIn: number, widthIn: number, heightI
 }
 
 const LBS_PER_KG = 2.20462;
+const IN_PER_CM = 0.393701;
 
 export function lbsToKg(lbs: number): number {
   return Math.round((lbs / LBS_PER_KG) * 100) / 100;
@@ -43,4 +44,12 @@ export function lbsToKg(lbs: number): number {
 
 export function kgToLbs(kg: number): number {
   return Math.round(kg * LBS_PER_KG * 100) / 100;
+}
+
+export function cmToIn(cm: number): number {
+  return Math.round(cm * IN_PER_CM * 100) / 100;
+}
+
+export function inToCm(inches: number): number {
+  return Math.round((inches / IN_PER_CM) * 100) / 100;
 }

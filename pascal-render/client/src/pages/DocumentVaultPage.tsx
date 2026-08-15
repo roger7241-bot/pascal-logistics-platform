@@ -90,7 +90,7 @@ export function DocumentVaultPage() {
           <textarea
             value={documentText}
             onChange={(e) => setDocumentText(e.target.value)}
-            placeholder="Paste document text to run real Claude extraction (optional)..."
+            placeholder="Paste document text to run real AI extraction (optional)..."
             rows={3}
             className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
           />

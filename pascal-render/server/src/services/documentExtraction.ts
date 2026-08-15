@@ -79,7 +79,7 @@ export async function extractShipmentFieldsFromText(documentText: string): Promi
 
     return { success: true, simulated: false, fields: toolUse.input as ExtractedShipmentFields };
   } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown Anthropic API error";
+    const error = err instanceof Error ? err.message : "Unknown AI extraction error";
     console.error(`Document extraction failed: ${error}`);
     return { success: false, simulated: false, error };
   }

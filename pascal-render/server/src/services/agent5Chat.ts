@@ -35,7 +35,7 @@ export async function askAgent5(orgId: string, question: string): Promise<ChatRe
   if (!client) {
     return {
       simulated: true,
-      reply: `[Simulated — no ANTHROPIC_API_KEY configured] I'd normally answer "${question}" using your live shipment and POA data. Once an API key is set, this becomes a real Claude-powered response.`,
+      reply: `[Simulated — no ANTHROPIC_API_KEY configured] I'd normally answer "${question}" using your live shipment and POA data. Once an API key is set, this becomes a real AI-powered response.`,
     };
   }
 
