@@ -57,15 +57,19 @@ const AVG_ROAD_SPEED_MPH = 40;
 const DRIVE_MINUTES_FROM_PACIFIC_HIGHWAY: Record<string, number> = { aldergrove: 30, sumas: 35 };
 
 /**
- * The automated trigger: Pacific Highway commercial wait > 45 min AND an
- * alternate (Aldergrove or Sumas) commercial wait < 15 min. Returns the
- * best qualifying recommendation, or undefined if the trigger isn't met.
+ * ADVISORY ONLY — never auto-executes a reroute or dispatch. Gate per
+ * Prompts 36/39's 30-Min Delay Threshold Guard: only surfaces a candidate
+ * when (primary wait − alternate wait) > 30 minutes. The caller (routes/
+ * reroute.ts) turns a qualifying result into a RerouteAdvisory record that
+ * requires explicit Client Logistics Manager sign-off before anything
+ * downstream (broker amendment, driver dispatch) can proceed — see
+ * types/reroute.ts for the full non-unilateral workflow this feeds.
  */
-export function evaluateRerouteTrigger(readings: BorderReading[]): RerouteRecommendation | undefined {
+export function evaluateRerouteAdvisory(readings: BorderReading[]): RerouteRecommendation | undefined {
   const primary = readings.find((r) => r.poeId === "pacific_highway");
-  if (!primary || primary.waitMinutes <= 45) return undefined;
+  if (!primary) return undefined;
 
-  const candidates = readings.filter((r) => r.poeId !== "pacific_highway" && r.waitMinutes < 15);
+  const candidates = readings.filter((r) => r.poeId !== "pacific_highway" && primary.waitMinutes - r.waitMinutes > 30);
   if (candidates.length === 0) return undefined;
 
   const scored = candidates.map((alt) => {
@@ -86,6 +90,9 @@ export function evaluateRerouteTrigger(readings: BorderReading[]): RerouteRecomm
       additionalFuelCostUsd,
       netTimeSavedMinutes,
       netValueUsd,
+      // "recommended" is display/sort guidance only — it has never triggered
+      // and must never trigger any automatic action. Every advisory this
+      // produces still requires explicit client sign-off (see routes/reroute.ts).
       recommended: netValueUsd > 0 && netTimeSavedMinutes > 10,
     };
   });

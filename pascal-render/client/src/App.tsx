@@ -14,6 +14,9 @@ import { CalendarPage } from "./pages/CalendarPage";
 import { ComplianceVaultPage } from "./pages/ComplianceVaultPage";
 import { ClientCalendarPage } from "./pages/ClientCalendarPage";
 import { CallActivityPage } from "./pages/CallActivityPage";
+import { RapidDispatchDesk } from "./pages/RapidDispatchDesk";
+import { MagicUploadPage } from "./pages/MagicUploadPage";
+import { PublicCargoTrackerPage } from "./pages/PublicCargoTrackerPage";
 
 export default function App() {
   return (
@@ -31,6 +34,10 @@ export default function App() {
         <Route path="/operator/facilities" element={<FacilitySopDirectoryPage />} />
         <Route path="/operator/vault" element={<DocumentVaultPage />} />
         <Route path="/operator/calendar" element={<CalendarPage />} />
+        <Route path="/operator/dispatch" element={<RapidDispatchDesk />} />
+        <Route path="/magic-upload/:token" element={<MagicUploadPage />} />
+        <Route path="/track" element={<PublicCargoTrackerPage />} />
+        <Route path="/track/:shipmentId" element={<PublicCargoTrackerPage />} />
         <Route path="/border-telemetry" element={<BorderTelemetryPage />} />
         <Route path="/client-portal" element={<ClientPortalPage />} />
         <Route path="/client-portal/compliance" element={<ComplianceVaultPage />} />

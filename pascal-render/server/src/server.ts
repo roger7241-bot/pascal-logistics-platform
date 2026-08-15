@@ -13,6 +13,7 @@ import { createBorderRouter } from "./routes/border.js";
 import { createExceptionsRouter } from "./routes/exceptions.js";
 import { createClientRouter } from "./routes/client.js";
 import { createFacilitiesRouter } from "./routes/facilities.js";
+import { createOperatorFacilitiesRouter } from "./routes/operatorFacilities.js";
 import { createSimulationRouter } from "./routes/simulation.js";
 import { createPoaRouter } from "./routes/poa.js";
 import { createDocumentsRouter } from "./routes/documents.js";
@@ -22,10 +23,14 @@ import { createBillingRouter } from "./routes/billing.js";
 import { createLeadsRouter } from "./routes/leads.js";
 import { createVaultRouter } from "./routes/vault.js";
 import { createCalendarRouter } from "./routes/calendar.js";
+import { createRerouteRouter } from "./routes/reroute.js";
 import { createExecutiveDraftsRouter } from "./routes/executiveDrafts.js";
 import { createCeoMetricsRouter } from "./routes/ceoMetrics.js";
 import { createChatRouter } from "./routes/chat.js";
 import { createCallsRouter } from "./routes/calls.js";
+import { createDispatchRouter, createMagicUploadRouter } from "./routes/dispatch.js";
+import { createPublicTrackingRouter } from "./routes/publicTracking.js";
+import { generateMorningDigest } from "./services/morningBrief.js";
 import { BorderTelemetryService } from "./services/borderTelemetryService.js";
 
 const PORT = Number(process.env.PORT) || 4000;
@@ -39,6 +44,13 @@ if (!CLIENT_ORIGIN_URL) {
 }
 
 const app = express();
+
+// Render's Node services run behind a reverse proxy — without this,
+// req.ip resolves to the proxy's internal address, not the real caller,
+// which would silently make every ipAddress field in security_audit_logs
+// wrong. `1` trusts exactly one hop (Render's own LB), not an arbitrary
+// chain, so a client can't spoof X-Forwarded-For past that.
+app.set("trust proxy", 1);
 
 app.use(
   cors({
@@ -68,6 +80,7 @@ app.use("/api/border", createBorderRouter(borderTelemetryService));
 app.use("/api/exceptions", createExceptionsRouter(wsManager));
 app.use("/api/client", createClientRouter(wsManager, borderTelemetryService));
 app.use("/api/client", createFacilitiesRouter());
+app.use("/api/operator", createOperatorFacilitiesRouter());
 app.use("/api/simulation", createSimulationRouter(wsManager));
 app.use("/api/client", createPoaRouter());
 app.use("/api/documents", createDocumentsRouter());
@@ -77,6 +90,14 @@ app.use("/api/operator", createBillingRouter());
 app.use("/api/operator", createLeadsRouter());
 app.use("/api/operator", createVaultRouter());
 app.use("/api/calendar", createCalendarRouter());
+app.use("/api/reroute", createRerouteRouter());
+app.use("/api/operator", createDispatchRouter());
+app.use("/api/v1/magic-upload", createMagicUploadRouter());
+app.use("/api/v1/track", createPublicTrackingRouter());
+app.get("/api/operator/morning-brief/:orgId", async (req, res) => {
+  const narrative = await generateMorningDigest(req.params.orgId);
+  res.status(200).json({ narrative });
+});
 app.use("/api/operator", createExecutiveDraftsRouter());
 app.use("/api/ceo", createCeoMetricsRouter(borderTelemetryService));
 app.use("/api/client", createChatRouter());

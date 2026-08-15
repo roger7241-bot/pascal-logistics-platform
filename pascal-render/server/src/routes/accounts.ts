@@ -15,6 +15,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { pool } from "../db/pool.js";
+import { logSecurityAudit, getAuditLogs } from "../services/securityAuditLogger.js";
 import { SAMPLE_SHIPMENTS } from "./client.js";
 
 export interface Account {
@@ -84,8 +85,13 @@ export function createAccountsRouter(): Router {
           pool.query("SELECT status FROM poa_records WHERE org_id = $1", [account.orgId]),
           pool.query("SELECT COUNT(*) AS count FROM vault_documents WHERE org_id = $1 AND category = 'usmca_certificate'", [account.orgId]),
         ]);
+        // taxId deliberately omitted from the list view — no UI consumes it
+        // here, and the Accounts Directory is a bulk/browsable list, not a
+        // single-record lookup. Least-privilege: only the audited
+        // /accounts/:id/detail endpoint below returns it.
+        const { taxId: _taxId, ...accountWithoutTaxId } = account;
         return {
-          ...account,
+          ...accountWithoutTaxId,
           facilityCount: Number(facilityCount.rows[0].count),
           poaStatus: poaResult.rows[0]?.status ?? "pending_upload",
           usmcaCertCount: Number(usmcaResult.rows[0].count),
@@ -155,6 +161,17 @@ export function createAccountsRouter(): Router {
     if (accountResult.rows.length === 0) return res.status(404).json({ error: `No account on file with id ${req.params.id}.` });
     const account = rowToAccount(accountResult.rows[0]);
 
+    if (account.taxId) {
+      await logSecurityAudit({
+        orgId: account.orgId,
+        operatorName: req.header("x-operator-name") ?? "unknown",
+        resourceType: "tax_id",
+        resourceId: account.id,
+        action: "read",
+        ipAddress: req.ip,
+      });
+    }
+
     const [facilities, carriers, invoices, poa, usmcaCerts] = await Promise.all([
       pool.query("SELECT id, name, role, city, country_code FROM facilities WHERE org_id = $1", [account.orgId]),
       pool.query("SELECT id, carrier_name, account_number, integration_status FROM carrier_accounts WHERE org_id = $1", [account.orgId]),
@@ -181,6 +198,13 @@ export function createAccountsRouter(): Router {
       poa: poa.rows[0] ?? { status: "pending_upload" },
       usmcaCertificates: usmcaCerts.rows,
     });
+  });
+
+  router.get("/accounts/:id/audit-log", async (req: Request, res: Response) => {
+    const accountResult = await pool.query("SELECT org_id FROM accounts WHERE id = $1", [req.params.id]);
+    if (accountResult.rowCount === 0) return res.status(404).json({ error: `No account on file with id ${req.params.id}.` });
+    const logs = await getAuditLogs({ orgId: accountResult.rows[0].org_id, limit: 50 });
+    return res.status(200).json({ logs });
   });
 
   return router;

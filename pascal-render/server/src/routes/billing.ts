@@ -20,6 +20,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { pool } from "../db/pool.js";
 import { getFxRates, convertFromUsd } from "../services/fxRates.js";
 import { sendOperationalEmail } from "../services/agentMailDispatch.js";
+import { logSecurityAudit } from "../services/securityAuditLogger.js";
 
 const VALID_STATUSES = ["draft", "sent", "paid", "overdue", "disputed"];
 const VALID_CURRENCIES = ["CAD", "USD", "MXN"];
@@ -58,10 +59,16 @@ export function createBillingRouter(): Router {
 
     const invoices = result.rows.map((row) => {
       const invoice = rowToInvoice(row);
+      // taxId/taxIdType deliberately stripped from the list view — same
+      // least-privilege reasoning as GET /accounts: this is a bulk listing
+      // loaded on every Billing & Admin desk page view, and no UI here
+      // displays the tax ID. It's still returned (and audited) from the
+      // single-invoice PDF export below, which is where it's actually used.
+      const { taxId: _taxId, taxIdType: _taxIdType, ...invoiceWithoutTaxId } = invoice;
       if (rates && VALID_CURRENCIES.includes(displayCurrency!)) {
-        return { ...invoice, displayAmount: convertFromUsd(invoice.amountUsd, displayCurrency as "CAD" | "USD" | "MXN", rates), displayCurrency, fxIsLive: rates.isLive };
+        return { ...invoiceWithoutTaxId, displayAmount: convertFromUsd(invoice.amountUsd, displayCurrency as "CAD" | "USD" | "MXN", rates), displayCurrency, fxIsLive: rates.isLive };
       }
-      return invoice;
+      return invoiceWithoutTaxId;
     });
 
     res.status(200).json({ invoices, fxRates: rates });
@@ -153,6 +160,17 @@ export function createBillingRouter(): Router {
     const existing = await pool.query("SELECT * FROM invoices WHERE id = $1", [req.params.id]);
     if (existing.rows.length === 0) return res.status(404).json({ error: `No invoice on file with id ${req.params.id}.` });
     const invoice = rowToInvoice(existing.rows[0]);
+
+    if (invoice.taxId) {
+      await logSecurityAudit({
+        orgId: invoice.orgId as string,
+        operatorName: req.header("x-operator-name") ?? "unknown",
+        resourceType: "tax_id",
+        resourceId: invoice.id as string,
+        action: "export",
+        ipAddress: req.ip,
+      });
+    }
 
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([612, 792]);

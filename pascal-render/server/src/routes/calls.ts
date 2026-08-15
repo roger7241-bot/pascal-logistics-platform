@@ -116,7 +116,7 @@ export function createCallsRouter(): Router {
 
     if (callOutcome === "hot_lead") {
       const eventResult = await pool.query(
-        `INSERT INTO calendar_events (org_id, title, event_type, starts_at, notes) VALUES ($1,$2,'other',$3,$4) RETURNING *`,
+        `INSERT INTO calendar_events (org_id, title, event_type, starts_at, notes) VALUES ($1,$2,'discovery_call',$3,$4) RETURNING *`,
         [
           "org_meridian",
           `Discovery call — ${contactName ?? "prospect"}`,

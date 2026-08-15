@@ -282,13 +282,13 @@ ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS call_outcome TEXT
   CHECK (call_outcome IN ('connected', 'voicemail', 'not_interested', 'hot_lead', 'opt_out_dnc'));
 ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS contact_email TEXT;
 
--- Seed a couple of segmented leads so the Prospect Segment Queue has real
--- filterable data on first load.
-INSERT INTO leads (company_name, contact_name, contact_phone, segment, source, stage)
-VALUES
-  ('Fraser Valley Fabrication', 'Tomas Reyes', '+16045552201', 'Surrey Manufacturers', 'Clay prospecting', 'new_unqualified'),
-  ('Blaine Import Partners', 'Wendy Cho', '+13605552202', 'Blaine Importers', 'LinkedIn', 'discovery_sop_review')
-ON CONFLICT DO NOTHING;
+-- ORDERING FIX: the seed INSERT below used to run here, before the
+-- leads_stage_check constraint swap further down remaps stage values to
+-- the new vocabulary. On a database that already has the OLD constraint
+-- (pre-dating this round), 'new_unqualified' isn't allowed yet at this
+-- point in the transaction, so the insert was rejected with a check
+-- constraint violation. Moved to after the DROP/remap/ADD CONSTRAINT
+-- block below, where the new stage values are actually valid.
 
 -- ============================================================================
 -- CEO HUB OVERHAUL — real activity audit trail and persisted Agent 3
@@ -433,6 +433,17 @@ BEGIN
 EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
 END $$;
 
+-- Seed a couple of segmented leads so the Prospect Segment Queue has real
+-- filterable data on first load. Runs here, AFTER the constraint above
+-- already permits the new stage vocabulary — moved from earlier in this
+-- file where it previously hit the OLD (pre-remap) constraint on any
+-- database that had already been deployed to before this round.
+INSERT INTO leads (company_name, contact_name, contact_phone, segment, source, stage)
+VALUES
+  ('Fraser Valley Fabrication', 'Tomas Reyes', '+16045552201', 'Surrey Manufacturers', 'Clay prospecting', 'new_unqualified'),
+  ('Blaine Import Partners', 'Wendy Cho', '+13605552202', 'Blaine Importers', 'LinkedIn', 'discovery_sop_review')
+ON CONFLICT DO NOTHING;
+
 -- Real bug fix: the original leads seed used ON CONFLICT DO NOTHING with
 -- no actual unique constraint to conflict on, so re-running this schema
 -- across sessions silently created duplicate rows every time (caught by
@@ -513,3 +524,301 @@ UPDATE accounts SET
   us_ein = '84-1234567', ca_bn = '123456789RT0001', country_of_incorporation = 'CA',
   billing_currency = 'USD', payment_terms = 'net30', house_spot_benchmark_opt_in = true
 WHERE org_id = 'org_meridian' AND legal_entity_name IS NULL;
+
+-- ============================================================================
+-- FACILITY MANAGEMENT & WAREHOUSE RULES HUB OVERHAUL — direct operator
+-- entry (no longer client-portal-only), dock contact & receiving email,
+-- break windows, dock/equipment constraints, safety/PPE, free-time &
+-- detention policy, capability tags for filtering, and soft-archive.
+-- ORDERING NOTE: follows the same lesson as the leads migration above —
+-- all of the following are additive ALTER TABLE ... ADD COLUMN IF NOT
+-- EXISTS statements with safe defaults, so there's no CHECK-constraint
+-- ordering risk against already-seeded rows.
+-- ============================================================================
+
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS dock_contact_name TEXT;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS dock_contact_phone TEXT;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS receiving_email TEXT;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS break_window TEXT; -- e.g. "12:00-12:30"
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS dock_door_count INTEGER;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS iso_container_capable BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS scale_on_site BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS hard_hat_required BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS steel_toe_required BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS driver_staging_notes TEXT;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS staging_map_url TEXT;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS free_time_minutes INTEGER NOT NULL DEFAULT 120;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS detention_rate_usd_per_hour NUMERIC(8,2) NOT NULL DEFAULT 75.00;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS capabilities TEXT[] NOT NULL DEFAULT '{}';
+  -- allowed tags enforced at the app layer: cold_storage, cross_dock, hazmat_approved, overhead_crane
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE facilities ADD COLUMN IF NOT EXISTS added_by TEXT NOT NULL DEFAULT 'client_portal' CHECK (added_by IN ('client_portal', 'operator'));
+
+-- Real seed data so the Facility Management Hub is never empty on first
+-- load, spanning the 3 profiles the operator sees on day one. Uses the
+-- same dedupe-safe pattern as the leads seed above: no unique constraint
+-- exists on (org_id, name) yet, so guard with a NOT EXISTS check instead
+-- of a bare ON CONFLICT that would silently no-op against nothing.
+INSERT INTO facilities (
+  org_id, role, name, street, city, state_or_province, country_code, postal_code,
+  dock_contact_name, dock_contact_phone, receiving_email,
+  dock_height, liftgate_required, forklift_on_site, max_trailer_length,
+  receiving_hours_start, receiving_hours_end, break_window,
+  dock_door_count, iso_container_capable, scale_on_site,
+  hard_hat_required, steel_toe_required, twic_card_required, driver_staging_notes, staging_map_url,
+  free_time_minutes, detention_rate_usd_per_hour, capabilities, added_by
+)
+SELECT * FROM (VALUES
+  ('org_meridian', 'both', 'Surrey Main Manufacturing Plant', '18800 96 Ave', 'Surrey', 'BC', 'CA', 'V4N 3P3',
+   'Dale Whitfield', '+16045557711', 'receiving@surreymfg.example.com',
+   true, false, true, '53ft',
+   '06:00', '18:00', '12:00-12:30',
+   6, false, true,
+   true, true, false, 'Stage in Lane 3, check in at the guard shack before backing to a door.', 'https://maps.example.com/surrey-main-plant',
+   120, 75.00, ARRAY['cross_dock'], 'operator'),
+  ('org_meridian', 'consignee', 'Blaine Border Distribution Center', '1400 Peace Portal Dr', 'Blaine', 'WA', 'US', '98230',
+   'Renee Castillo', '+13605558822', 'dock@blainedist.example.com',
+   true, true, true, '53ft',
+   '05:00', '17:00', '11:30-12:00',
+   10, true, true,
+   true, true, true, 'TWIC required at gate. Customs staging lot is separate from the receiving dock — follow signage.', 'https://maps.example.com/blaine-border-dc',
+   120, 85.00, ARRAY['cold_storage', 'cross_dock'], 'operator'),
+  ('org_meridian', 'consignee', 'Harrison Hot Springs Depot', '250 Hot Springs Rd', 'Harrison Hot Springs', 'BC', 'CA', 'V0M 1K0',
+   'Grant Pelletier', '+16045553344', 'depot@harrisonhs.example.com',
+   false, false, false, '48ft',
+   '07:00', '15:30', '',
+   2, false, false,
+   true, true, false, 'Flatbed receiving only — overhead crane operator must be on-site to unload, call ahead.', 'https://maps.example.com/harrison-hot-springs-depot',
+   90, 65.00, ARRAY['overhead_crane'], 'operator')
+) AS seed(org_id, role, name, street, city, state_or_province, country_code, postal_code,
+  dock_contact_name, dock_contact_phone, receiving_email,
+  dock_height, liftgate_required, forklift_on_site, max_trailer_length,
+  receiving_hours_start, receiving_hours_end, break_window,
+  dock_door_count, iso_container_capable, scale_on_site,
+  hard_hat_required, steel_toe_required, twic_card_required, driver_staging_notes, staging_map_url,
+  free_time_minutes, detention_rate_usd_per_hour, capabilities, added_by)
+WHERE NOT EXISTS (SELECT 1 FROM facilities f WHERE f.name = seed.name);
+
+-- ============================================================================
+-- SCHEDULING HUB OVERHAUL — Logistics Calendar becomes an interactive,
+-- category-driven scheduling surface shared by both the Operator Control
+-- Tower and the Client Portal. Consolidates the original 6 event_type
+-- values into the 4 requested category badges (dock appointments, ocean
+-- laycan/demurrage, border clearance/PAPS windows, discovery calls &
+-- client meetings), plus facility linkage, timezone, reminder
+-- thresholds/channels, and a real status lifecycle for reschedule/cancel.
+--
+-- ORDERING: same lesson as the leads_stage_check fix earlier in this file
+-- — DROP the old CHECK constraint, remap existing rows, THEN add the new
+-- CHECK constraint, all before anything downstream tries to insert or
+-- update using the new vocabulary.
+-- ============================================================================
+
+ALTER TABLE calendar_events DROP CONSTRAINT IF EXISTS calendar_events_event_type_check;
+
+UPDATE calendar_events SET event_type = CASE event_type
+  WHEN 'pickup' THEN 'dock_appointment'
+  WHEN 'delivery' THEN 'dock_appointment'
+  WHEN 'laycan' THEN 'ocean_demurrage'
+  WHEN 'demurrage_deadline' THEN 'ocean_demurrage'
+  WHEN 'poa_expiry' THEN 'border_clearance'
+  ELSE event_type
+END;
+
+-- Real backfill, not a guess: the hot-lead auto-scheduler in calls.ts has
+-- been inserting these with event_type='other' + a predictable title
+-- prefix since the CRM Call Assist round — this reclassifies rows that
+-- already exist in a deployed database so they show up under the correct
+-- badge retroactively, not just going forward.
+UPDATE calendar_events SET event_type = 'discovery_call' WHERE event_type = 'other' AND title ILIKE 'Discovery call%';
+
+ALTER TABLE calendar_events ADD CONSTRAINT calendar_events_event_type_check
+  CHECK (event_type IN ('dock_appointment', 'ocean_demurrage', 'border_clearance', 'discovery_call', 'other'));
+
+ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS poe_id TEXT CHECK (poe_id IS NULL OR poe_id IN ('peace_arch', 'pacific_highway', 'aldergrove', 'sumas', 'point_roberts'));
+ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS facility_id UUID REFERENCES facilities(id) ON DELETE SET NULL;
+ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'America/Los_Angeles' CHECK (timezone IN ('America/Los_Angeles', 'America/New_York', 'UTC'));
+ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS reminder_thresholds TEXT[] NOT NULL DEFAULT '{}'; -- e.g. '15m', '1h', '24h'
+ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS reminder_channels TEXT[] NOT NULL DEFAULT '{}'; -- e.g. 'email', 'sms'
+ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'rescheduled', 'cancelled'));
+
+-- Real seed events so the Scheduling Hub is never blank on first load.
+-- Uses relative offsets from NOW() rather than hardcoded dates so "Today"
+-- and "Tomorrow" stay genuinely true no matter when this migration runs,
+-- and links directly to real existing entities (SHIP-2026-8801 from the
+-- sample shipment set, the Surrey Main Manufacturing Plant facility
+-- seeded in the Facility Hub round, and the Fraser Valley
+-- Fabrication / Blaine Import Partners leads from the Sales & Leads
+-- round) rather than inventing disconnected placeholder IDs.
+INSERT INTO calendar_events (org_id, title, event_type, starts_at, ends_at, shipment_id, poe_id, facility_id, timezone, reminder_thresholds, reminder_channels, notes)
+SELECT
+  'org_meridian',
+  'Dock Appointment: Surrey Main Plant',
+  'dock_appointment',
+  date_trunc('day', now()) + interval '14 hours',
+  date_trunc('day', now()) + interval '15 hours',
+  'SHIP-2026-8801',
+  NULL,
+  (SELECT id FROM facilities WHERE name = 'Surrey Main Manufacturing Plant' LIMIT 1),
+  'America/Los_Angeles',
+  ARRAY['1h', '24h'],
+  ARRAY['sms'],
+  'Reefer 53ft — confirm dock door assignment on arrival.'
+WHERE NOT EXISTS (SELECT 1 FROM calendar_events WHERE title = 'Dock Appointment: Surrey Main Plant' AND shipment_id = 'SHIP-2026-8801');
+
+INSERT INTO calendar_events (org_id, title, event_type, starts_at, poe_id, timezone, reminder_thresholds, reminder_channels, notes)
+SELECT
+  'org_meridian',
+  'Demurrage Free Time Expiration',
+  'ocean_demurrage',
+  date_trunc('day', now()) + interval '1 day 17 hours',
+  NULL,
+  'America/Los_Angeles',
+  ARRAY['24h', '1h'],
+  ARRAY['email', 'sms'],
+  'Port of Vancouver — 40'' HC container, free time expires at the deadline above.'
+WHERE NOT EXISTS (SELECT 1 FROM calendar_events WHERE title = 'Demurrage Free Time Expiration');
+
+INSERT INTO calendar_events (org_id, title, event_type, starts_at, poe_id, timezone, reminder_thresholds, reminder_channels, notes)
+SELECT
+  'org_meridian',
+  'Customs Clearance Window: Sumas POE',
+  'border_clearance',
+  date_trunc('day', now()) + interval '2 days 9 hours',
+  'sumas',
+  'America/Los_Angeles',
+  ARRAY['1h'],
+  ARRAY['sms'],
+  'Fraser Valley Fabrication — PAPS pre-filed, confirm release before crossing.'
+WHERE NOT EXISTS (SELECT 1 FROM calendar_events WHERE title = 'Customs Clearance Window: Sumas POE');
+
+INSERT INTO calendar_events (org_id, title, event_type, starts_at, ends_at, timezone, reminder_thresholds, reminder_channels, notes)
+SELECT
+  'org_meridian',
+  'Discovery Call: Blaine Import Partners',
+  'discovery_call',
+  date_trunc('day', now()) + interval '3 days 11 hours',
+  date_trunc('day', now()) + interval '3 days 11 hours 30 minutes',
+  'America/Los_Angeles',
+  ARRAY['15m'],
+  ARRAY['email'],
+  'Zoom Phone — contact: Wendy Cho.'
+WHERE NOT EXISTS (SELECT 1 FROM calendar_events WHERE title = 'Discovery Call: Blaine Import Partners');
+
+-- ============================================================================
+-- CONSULTATIVE REROUTE & BROKER NOTIFICATION WORKFLOW (Prompts 36 & 39)
+-- Non-unilateral by design — see server/src/types/reroute.ts for the full
+-- status lifecycle. No auto-rerouting: every advisory sits at
+-- 'pending_client_signoff' until a named Client Logistics Manager approves
+-- it, which is the only thing that triggers the broker email dispatch;
+-- driver dispatch stays held at 'pending_broker_confirmation' until the
+-- broker confirms back.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS reroute_advisories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shipment_id TEXT NOT NULL,
+  from_poe_id TEXT NOT NULL,
+  to_poe_id TEXT NOT NULL,
+  from_wait_minutes INTEGER NOT NULL,
+  to_wait_minutes INTEGER NOT NULL,
+  delta_minutes INTEGER NOT NULL CHECK (delta_minutes > 30), -- 30-Min Delay Threshold Guard, enforced at the DB level too
+  net_time_saved_minutes INTEGER NOT NULL,
+  net_value_usd NUMERIC(8,2) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending_client_signoff' CHECK (status IN (
+    'pending_client_signoff', 'client_approved', 'client_declined',
+    'pending_broker_confirmation', 'broker_confirmed', 'dispatch_released'
+  )),
+  client_signoff_name TEXT, -- the Client's Logistics Manager, never the operator — enforced at the API layer
+  client_signoff_at TIMESTAMPTZ,
+  broker_email TEXT,
+  original_port_code TEXT,
+  amended_port_code TEXT,
+  broker_confirmed_at TIMESTAMPTZ,
+  dispatch_released_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_reroute_advisories_shipment_id ON reroute_advisories (shipment_id);
+CREATE INDEX IF NOT EXISTS idx_reroute_advisories_status ON reroute_advisories (status);
+
+-- ============================================================================
+-- SECURITY AUDIT LOGGER + S3-KMS SIGNED DOWNLOAD URLS
+-- Append-only audit trail for every operator read/export of client tax IDs
+-- (EIN/BN/RFC) and POA documents, plus real short-lived signed URLs for
+-- Document Vault downloads.
+--
+-- HONEST LIMITATION: vault_documents has never had a binary file upload
+-- path — POST /api/operator/vault stores filename + OCR-extracted text
+-- fields only (see routes/vault.ts). s3_key is added here so the signed-
+-- URL service and audit logger are real and ready, but it stays NULL
+-- until a real upload flow (presigned PUT + client file picker) exists.
+-- Until then, generateVaultDownloadUrl only produces a working link for
+-- documents that were seeded/backfilled with a real key.
+-- ============================================================================
+
+ALTER TABLE vault_documents ADD COLUMN IF NOT EXISTS s3_key TEXT;
+
+CREATE TABLE IF NOT EXISTS security_audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL,
+  operator_name TEXT NOT NULL,
+  resource_type TEXT NOT NULL CHECK (resource_type IN ('tax_id', 'poa_document', 'vault_document')),
+  resource_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('read', 'export', 'download')),
+  ip_address TEXT,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_security_audit_logs_org_id ON security_audit_logs (org_id);
+CREATE INDEX IF NOT EXISTS idx_security_audit_logs_resource ON security_audit_logs (resource_type, resource_id);
+
+-- ============================================================================
+-- RAPID DISPATCH DESK — warehouse shipping-clerk outbound staging.
+-- Real historical data source for the Weight Anomaly Sentinel (averages
+-- computed from actual prior outbound_staging rows, not invented), real
+-- carrier cutoff times, and a genuinely public (no-login) magic-upload
+-- token flow for the mobile dock-camera BOL capture.
+-- ============================================================================
+
+ALTER TABLE carrier_accounts ADD COLUMN IF NOT EXISTS daily_cutoff_local_time TEXT; -- e.g. '17:00'
+ALTER TABLE carrier_accounts ADD COLUMN IF NOT EXISTS cutoff_timezone TEXT NOT NULL DEFAULT 'America/Los_Angeles';
+
+CREATE TABLE IF NOT EXISTS outbound_staging (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL,
+  po_number TEXT,
+  bol_number TEXT,
+  sku TEXT,
+  consignee_facility_id UUID REFERENCES facilities(id),
+  carrier_account_id UUID REFERENCES carrier_accounts(id),
+  packaging_type TEXT NOT NULL CHECK (packaging_type IN ('standard_48x40', 'chep_pallet', 'reefer_tote', 'parcel_carton')),
+  pallet_count INTEGER NOT NULL DEFAULT 1,
+  gross_weight_lbs NUMERIC(10,2) NOT NULL,
+  freight_class TEXT,
+  is_cross_border BOOLEAN NOT NULL DEFAULT false,
+  paps_pars_barcode TEXT,
+  status TEXT NOT NULL DEFAULT 'staged' CHECK (status IN ('staged', 'loaded', 'dispatched', 'cancelled')),
+  driver_phone TEXT,
+  staged_by TEXT,
+  staged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  dispatched_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_outbound_staging_org_status ON outbound_staging (org_id, status);
+CREATE INDEX IF NOT EXISTS idx_outbound_staging_staged_at ON outbound_staging (staged_at DESC);
+
+CREATE TABLE IF NOT EXISTS magic_upload_tokens (
+  token TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL,
+  outbound_staging_id UUID REFERENCES outbound_staging(id),
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ
+);
+
+-- ============================================================================
+-- CLIENT EXPERIENCE SUITE — Executive Brief, Public Tracker & Webhooks
+-- ============================================================================
+
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS slack_webhook_url TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS teams_webhook_url TEXT;

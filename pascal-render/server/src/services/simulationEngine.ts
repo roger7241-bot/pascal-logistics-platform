@@ -13,7 +13,7 @@ import type { SimulationStep, SimulationTrace } from "../types/simulation.js";
 import { runPipeline } from "../agents/pipeline.js";
 import { auditCompliance } from "../agents/agent2Compliance.js";
 import { optimizeRate } from "../agents/agent3RateOptimization.js";
-import { evaluateRerouteTrigger, type BorderReading } from "../agents/agent4Equipment.js";
+import { evaluateRerouteAdvisory, type BorderReading } from "../agents/agent4Equipment.js";
 import { checkLegacyCarrierStatus } from "../workers/legacyScraper.js";
 import { getOrCreatePoaRecord, canDispatchCrossBorder } from "./poaLifecycle.js";
 import { sendDriverSms } from "./twilioMessaging.js";
@@ -103,7 +103,7 @@ export async function runEndToEndSimulation(wsManager: WsManager): Promise<Simul
     { poeId: "pacific_highway", waitMinutes: 52 },
     { poeId: "sumas", waitMinutes: 12 },
   ];
-  const reroute = evaluateRerouteTrigger(borderReadings);
+  const reroute = evaluateRerouteAdvisory(borderReadings);
 
   emit({
     stepNumber: 3,

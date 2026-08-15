@@ -5,8 +5,10 @@ import { ShipmentDetailDrawer } from "../components/ShipmentDetailDrawer";
 import { ClientShipmentIntakeWizard } from "../components/ClientShipmentIntakeWizard";
 import { ClientOpsBaselineWizard } from "../components/ClientOpsBaselineWizard";
 import { ChatbotWidget } from "../components/ChatbotWidget";
+import { ClientRerouteSignoffCard } from "../components/ClientRerouteSignoffCard";
 import { api } from "../config/api";
 import type { ClientShipmentSummary, StatusChip } from "../types/shipment";
+import type { RerouteAdvisory } from "../types/reroute";
 
 const MODE_ICON: Record<string, typeof Truck> = { road: Truck, ocean: Ship, air: Plane };
 
@@ -45,6 +47,7 @@ export function ClientPortalPage() {
   const [selected, setSelected] = useState<ClientShipmentSummary | undefined>(undefined);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [baselineOpen, setBaselineOpen] = useState(false);
+  const [pendingAdvisories, setPendingAdvisories] = useState<RerouteAdvisory[]>([]);
 
   useEffect(() => {
     api
@@ -53,11 +56,23 @@ export function ClientPortalPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    api.rerouteAdvisories<{ advisories: RerouteAdvisory[] }>().then((d) => setPendingAdvisories(d.advisories.filter((a) => a.status === "pending_client_signoff")));
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <AppHeader />
       <main className="mx-auto max-w-5xl space-y-4 p-6">
         <h1 className="text-xl font-bold">Client Self-Service Portal</h1>
+
+        {pendingAdvisories.map((advisory) => (
+          <ClientRerouteSignoffCard
+            key={advisory.id}
+            advisory={advisory}
+            onDecided={(updated) => setPendingAdvisories((prev) => prev.filter((a) => a.id !== updated.id))}
+          />
+        ))}
 
         {/* Executive retainer KPI summary */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

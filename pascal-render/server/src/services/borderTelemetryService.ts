@@ -11,7 +11,7 @@
 
 import { PORTS_OF_ENTRY, classifyCongestion } from "../types/borderTelemetry.js";
 import type { BorderWaitReading, Direction, LaneType, PoeId } from "../types/borderTelemetry.js";
-import { evaluateRerouteTrigger, type BorderReading, type RerouteRecommendation } from "../agents/agent4Equipment.js";
+import { evaluateRerouteAdvisory, type BorderReading, type RerouteRecommendation } from "../agents/agent4Equipment.js";
 import type { WsManager } from "../ws/wsManager.js";
 
 const BASELINE_MINUTES: Record<LaneType, [number, number]> = {
@@ -91,7 +91,7 @@ export class BorderTelemetryService {
     const triggers: { direction: Direction; recommendation: RerouteRecommendation }[] = [];
     for (const direction of ["northbound", "southbound"] as Direction[]) {
       const agent4Readings = toAgent4Readings(this.latestReadings, direction);
-      const recommendation = evaluateRerouteTrigger(agent4Readings);
+      const recommendation = evaluateRerouteAdvisory(agent4Readings);
       if (recommendation) triggers.push({ direction, recommendation });
     }
     this.latestTriggers = triggers;

@@ -13,6 +13,7 @@ import {
   Camera,
   Gauge,
   Phone,
+  Zap,
 } from "lucide-react";
 
 const OPERATOR_DESKS = [
@@ -27,6 +28,7 @@ const OPERATOR_DESKS = [
   { to: "/operator/facilities", label: "Facility SOPs", icon: Warehouse },
   { to: "/operator/vault", label: "Document Vault", icon: FolderOpen },
   { to: "/operator/calendar", label: "Calendar", icon: CalendarDays },
+  { to: "/operator/dispatch", label: "Rapid Dispatch", icon: Zap },
   { to: "/border-telemetry", label: "Border & Cams", icon: Camera },
 ];
 

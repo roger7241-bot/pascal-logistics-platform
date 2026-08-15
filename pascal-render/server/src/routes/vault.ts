@@ -10,8 +10,11 @@
 import { Router, type Request, type Response } from "express";
 import { pool } from "../db/pool.js";
 import { extractShipmentFieldsFromText } from "../services/documentExtraction.js";
+import { generateVaultDownloadUrl } from "../services/s3SignedUrls.js";
+import { logSecurityAudit } from "../services/securityAuditLogger.js";
 
 const VALID_CATEGORIES = ["commercial_invoice", "poa", "bill_of_lading", "sds", "usmca_certificate", "other"];
+const AUDITED_CATEGORIES = new Set(["poa"]); // POA documents specifically named in the security brief; extend here if other categories need the same trail
 
 function rowToDocument(row: Record<string, unknown>) {
   return {
@@ -23,6 +26,7 @@ function rowToDocument(row: Record<string, unknown>) {
     extractedFields: row.extracted_fields,
     expiresAtIso: row.expires_at ? (row.expires_at as Date).toISOString() : undefined,
     uploadedAt: row.uploaded_at,
+    hasStoredFile: Boolean(row.s3_key),
   };
 }
 
@@ -35,6 +39,27 @@ export function createVaultRouter(): Router {
       ? await pool.query("SELECT * FROM vault_documents WHERE org_id = $1 ORDER BY uploaded_at DESC", [orgId])
       : await pool.query("SELECT * FROM vault_documents ORDER BY uploaded_at DESC");
     res.status(200).json({ documents: result.rows.map(rowToDocument) });
+  });
+
+  router.get("/vault/:id/download", async (req: Request, res: Response) => {
+    const operatorName = req.header("x-operator-name") ?? "unknown";
+    const result = await pool.query("SELECT * FROM vault_documents WHERE id = $1", [req.params.id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Document not found." });
+    const doc = result.rows[0];
+
+    if (!doc.s3_key) {
+      return res.status(409).json({ error: "This document has no stored file — it was uploaded as OCR text only, not a binary file. No file exists to sign a URL for." });
+    }
+
+    const signed = await generateVaultDownloadUrl(doc.s3_key as string);
+
+    if (doc.category === "poa" || AUDITED_CATEGORIES.has(doc.category as string)) {
+      await logSecurityAudit({ orgId: doc.org_id as string, operatorName, resourceType: "poa_document", resourceId: doc.id as string, action: "download", ipAddress: req.ip });
+    } else {
+      await logSecurityAudit({ orgId: doc.org_id as string, operatorName, resourceType: "vault_document", resourceId: doc.id as string, action: "download", ipAddress: req.ip });
+    }
+
+    return res.status(200).json(signed);
   });
 
   router.post("/vault", async (req: Request, res: Response) => {

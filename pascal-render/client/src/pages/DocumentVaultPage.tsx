@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, Upload, Loader2, FileText } from "lucide-react";
+import { FolderOpen, Upload, Loader2, FileText, Download } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api } from "../config/api";
 
@@ -9,6 +9,7 @@ interface VaultDocument {
   category: string;
   extractedFields?: Record<string, unknown>;
   uploadedAt: string;
+  hasStoredFile: boolean;
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -27,6 +28,8 @@ export function DocumentVaultPage() {
   const [category, setCategory] = useState("commercial_invoice");
   const [documentText, setDocumentText] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState<string | undefined>();
+  const [downloadError, setDownloadError] = useState<Record<string, string>>({});
 
   const load = () => {
     setLoading(true);
@@ -48,6 +51,19 @@ export function DocumentVaultPage() {
       load();
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDownload = async (doc: VaultDocument) => {
+    setDownloading(doc.id);
+    setDownloadError((prev) => ({ ...prev, [doc.id]: "" }));
+    try {
+      const signed = await api.vaultDownloadUrl<{ url: string; simulated: boolean; expiresInSeconds: number }>(doc.id);
+      window.open(signed.url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setDownloadError((prev) => ({ ...prev, [doc.id]: err instanceof Error ? err.message : "Download failed." }));
+    } finally {
+      setDownloading(undefined);
     }
   };
 
@@ -94,10 +110,22 @@ export function DocumentVaultPage() {
                   <FileText size={14} className="shrink-0 text-slate-400" />
                   <p className="flex-1 text-sm font-semibold text-slate-900">{doc.filename}</p>
                   <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">{CATEGORY_LABEL[doc.category]}</span>
+                  {doc.hasStoredFile ? (
+                    <button
+                      onClick={() => handleDownload(doc)}
+                      disabled={downloading === doc.id}
+                      className="flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      <Download size={11} /> {downloading === doc.id ? "Signing…" : "Download"}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-300">No file stored</span>
+                  )}
                 </div>
                 {doc.extractedFields && Object.keys(doc.extractedFields).length > 0 && (
                   <p className="mt-1.5 pl-6 text-xs text-slate-500">Extracted: {JSON.stringify(doc.extractedFields)}</p>
                 )}
+                {downloadError[doc.id] && <p className="mt-1.5 pl-6 text-xs text-rose-600">{downloadError[doc.id]}</p>}
               </div>
             ))}
             {!loading && documents.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-400">No documents in the vault yet.</p>}

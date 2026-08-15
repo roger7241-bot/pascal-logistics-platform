@@ -37,6 +37,22 @@ function rowToFacility(row: Record<string, unknown>): FacilityProfile {
     driverPPE: (row.driver_ppe as string[]) ?? [],
     twicCardRequired: row.twic_card_required as boolean,
     checkInInstructions: (row.check_in_instructions as string) ?? undefined,
+    dockContactName: (row.dock_contact_name as string) ?? undefined,
+    dockContactPhone: (row.dock_contact_phone as string) ?? undefined,
+    receivingEmail: (row.receiving_email as string) ?? undefined,
+    breakWindow: (row.break_window as string) ?? undefined,
+    dockDoorCount: (row.dock_door_count as number) ?? undefined,
+    isoContainerCapable: row.iso_container_capable as boolean,
+    scaleOnSite: row.scale_on_site as boolean,
+    hardHatRequired: row.hard_hat_required as boolean,
+    steelToeRequired: row.steel_toe_required as boolean,
+    driverStagingNotes: (row.driver_staging_notes as string) ?? undefined,
+    stagingMapUrl: (row.staging_map_url as string) ?? undefined,
+    freeTimeMinutes: row.free_time_minutes as number,
+    detentionRateUsdPerHour: Number(row.detention_rate_usd_per_hour),
+    capabilities: (row.capabilities as FacilityProfile["capabilities"]) ?? [],
+    isArchived: row.is_archived as boolean,
+    addedBy: row.added_by as FacilityProfile["addedBy"],
   };
 }
 
