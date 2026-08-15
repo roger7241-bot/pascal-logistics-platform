@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Users, Plus, X, Loader2, TrendingUp, ShieldCheck, Building2, FileStack, Truck, Receipt, Warehouse, ChevronRight } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
+import { KpiCard, ProgressBar } from "../components/KpiCard";
 import { api } from "../config/api";
 
 interface Account {
@@ -226,33 +227,29 @@ export function CrmAccountsPage() {
 
         {kpis && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <KpiCard icon={Building2} label="Managed accounts" value={`${kpis.activeCount} active`} caption={`${kpis.onboardingCount} onboarding`} />
+
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-1 flex items-center gap-2 text-slate-500">
-                <Building2 size={14} />
-                <span className="text-xs font-mono uppercase tracking-wide">Managed accounts</span>
+                <TrendingUp size={15} />
+                <span className="text-[13px] font-mono uppercase tracking-wide">Retainer MRR</span>
               </div>
-              <p className="text-2xl font-bold">{kpis.activeCount} active</p>
-              <p className="text-xs text-slate-400">{kpis.onboardingCount} onboarding</p>
-            </div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-              <div className="mb-1 flex items-center gap-2 text-emerald-700">
-                <TrendingUp size={14} />
-                <span className="text-xs font-mono uppercase tracking-wide">Retainer MRR</span>
-              </div>
-              <p className="text-lg font-bold text-emerald-700">
-                ${kpis.mrrByCurrency.USD.toLocaleString()} <span className="text-xs font-normal">USD</span>
+              <p className="text-lg font-bold text-slate-900">
+                ${kpis.mrrByCurrency.USD.toLocaleString()} <span className="text-xs font-normal text-slate-400">USD</span>
               </p>
-              <p className="text-xs text-emerald-600">
+              <p className="text-[13px] text-slate-400">
                 CA${kpis.mrrByCurrency.CAD.toLocaleString()} · MX${kpis.mrrByCurrency.MXN.toLocaleString()}
               </p>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-1 flex items-center gap-2 text-slate-500">
-                <ShieldCheck size={14} />
-                <span className="text-xs font-mono uppercase tracking-wide">Compliance health rate</span>
+
+            <div className={`rounded-xl border p-4 ${kpis.complianceHealthRatePct < 50 ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-white shadow-sm"}`}>
+              <div className={`mb-1 flex items-center gap-2 ${kpis.complianceHealthRatePct < 50 ? "text-amber-700" : "text-slate-500"}`}>
+                <ShieldCheck size={15} />
+                <span className="text-[13px] font-mono uppercase tracking-wide">Compliance health rate</span>
               </div>
-              <p className="text-2xl font-bold">{kpis.complianceHealthRatePct}%</p>
-              <p className="text-xs text-slate-400">Active POA + verified USMCA cert on file</p>
+              <p className={`mb-1.5 text-[28px] font-bold leading-tight ${kpis.complianceHealthRatePct < 50 ? "text-amber-700" : ""}`}>{kpis.complianceHealthRatePct}%</p>
+              <ProgressBar percent={kpis.complianceHealthRatePct} colorClass={kpis.complianceHealthRatePct < 50 ? "bg-amber-500" : "bg-emerald-500"} />
+              <p className={`mt-1 text-[13px] ${kpis.complianceHealthRatePct < 50 ? "text-amber-600" : "text-slate-400"}`}>Active POA + verified USMCA cert on file</p>
             </div>
           </div>
         )}

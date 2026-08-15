@@ -64,11 +64,11 @@ export function OperatorHeader() {
             <Link
               key={desk.to}
               to={desk.to}
-              className={`flex items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-xs font-medium transition-colors ${
-                isActive ? "border-cyan-400 text-slate-50" : "border-transparent text-slate-500 hover:text-slate-300"
+              className={`flex items-center gap-1.5 border-b-2 px-3 py-3 text-[13px] font-medium transition-colors ${
+                isActive ? "border-cyan-400 text-slate-50" : "border-transparent text-slate-300 hover:text-slate-50"
               }`}
             >
-              <Icon size={12} />
+              <Icon size={14} />
               {desk.label}
             </Link>
           );

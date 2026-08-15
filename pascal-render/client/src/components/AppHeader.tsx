@@ -32,8 +32,8 @@ export function AppHeader() {
           <Link
             key={item.to}
             to={item.to}
-            className={`border-b-2 px-3 py-2.5 text-xs font-medium transition-colors ${
-              location.pathname === item.to ? "border-cyan-400 text-slate-50" : "border-transparent text-slate-500 hover:text-slate-300"
+            className={`border-b-2 px-4 py-3.5 text-sm font-medium transition-colors ${
+              location.pathname === item.to ? "border-cyan-400 text-slate-50" : "border-transparent text-slate-300 hover:text-slate-50"
             }`}
           >
             {item.label}

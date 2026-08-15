@@ -43,9 +43,10 @@ export function SimulationButton() {
     <>
       <button
         onClick={handleRun}
-        className="flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800/60 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800"
+        title="Simulate End-to-End Border Exception & Rebooking"
+        className="flex items-center gap-1.5 rounded-md border border-slate-800 bg-transparent px-2 py-1.5 text-xs font-medium text-slate-400 hover:border-slate-700 hover:text-slate-200"
       >
-        <PlayCircle size={13} /> Simulate End-to-End Border Exception &amp; Rebooking
+        <PlayCircle size={12} /> Simulate scenario
       </button>
 
       {open && (

@@ -353,14 +353,14 @@ export function RapidDispatchDesk() {
           {/* ============ INTAKE FORM ============ */}
           <div className="space-y-4">
             {/* Scan target selector */}
-            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Scanner routes to:</p>
-              <div className="flex flex-wrap gap-1.5">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="mb-2.5 text-sm font-semibold uppercase tracking-wide text-slate-400">Scanner routes to:</p>
+              <div className="flex flex-wrap gap-2">
                 {(Object.keys(SCAN_TARGET_LABEL) as ScanTarget[]).map((t) => (
                   <button
                     key={t}
                     onClick={() => setScanTarget(t)}
-                    className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                    className={`rounded-full border px-4 py-2.5 text-sm font-medium transition ${
                       scanTarget === t ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
                     }`}
                   >
@@ -532,9 +532,9 @@ export function RapidDispatchDesk() {
               <button
                 onClick={handleStage}
                 disabled={submitting}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-4 text-base font-bold text-white hover:bg-slate-800 disabled:opacity-50"
               >
-                <ChevronRight size={16} /> {submitting ? "Staging…" : "Stage Shipment (Ctrl/Cmd + Enter)"}
+                <ChevronRight size={18} /> {submitting ? "Staging…" : "Stage Shipment (Ctrl/Cmd + Enter)"}
               </button>
             </div>
           </div>
@@ -673,12 +673,12 @@ export function RapidDispatchDesk() {
 function ScanField({ label, value, onChange, flashing, type = "text" }: { label: string; value: string; onChange: (v: string) => void; flashing?: boolean; type?: string }) {
   return (
     <label className="block">
-      {label && <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>}
+      {label && <span className="mb-1.5 block text-sm font-medium text-slate-600">{label}</span>}
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-colors focus:border-slate-400 ${flashing ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}
+        className={`w-full rounded-lg border px-4 py-3.5 text-base outline-none transition-colors focus:border-slate-400 ${flashing ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}
       />
     </label>
   );

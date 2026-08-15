@@ -6,6 +6,7 @@ import { ClientShipmentIntakeWizard } from "../components/ClientShipmentIntakeWi
 import { ClientOpsBaselineWizard } from "../components/ClientOpsBaselineWizard";
 import { ChatbotWidget } from "../components/ChatbotWidget";
 import { ClientRerouteSignoffCard } from "../components/ClientRerouteSignoffCard";
+import { KpiCard, ProgressBar } from "../components/KpiCard";
 import { api } from "../config/api";
 import type { ClientShipmentSummary, StatusChip } from "../types/shipment";
 import type { RerouteAdvisory } from "../types/reroute";
@@ -28,6 +29,15 @@ const STATUS_CHIP_CLASS: Record<StatusChip, string> = {
   flight_departed: "bg-violet-100 text-violet-700",
   in_transit: "bg-cyan-100 text-cyan-700",
   delivered: "bg-emerald-100 text-emerald-700",
+};
+
+const STATUS_CHIP_BAR_CLASS: Record<StatusChip, string> = {
+  paps_pars_released: "bg-emerald-500",
+  customs_hold_flagged: "bg-rose-500",
+  vessel_en_route: "bg-sky-500",
+  flight_departed: "bg-violet-500",
+  in_transit: "bg-cyan-500",
+  delivered: "bg-emerald-500",
 };
 
 // Executive retainer summary — HONEST LIMITATION: real border-clearance %
@@ -83,34 +93,20 @@ export function ClientPortalPage() {
 
         {/* Executive retainer KPI summary */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-1 flex items-center gap-2 text-slate-500">
-              <Package size={14} />
-              <span className="text-xs font-mono uppercase tracking-wide">Active shipments</span>
-            </div>
-            <p className="text-2xl font-bold">{RETAINER_SUMMARY.activeShipments}</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-1 flex items-center gap-2 text-slate-500">
-              <ShieldCheck size={14} />
-              <span className="text-xs font-mono uppercase tracking-wide">On-time clearance</span>
-            </div>
-            <p className="text-2xl font-bold">{RETAINER_SUMMARY.onTimeBorderClearancePct}%</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-1 flex items-center gap-2 text-slate-500">
-              <Clock size={14} />
-              <span className="text-xs font-mono uppercase tracking-wide">Avg border transit</span>
-            </div>
-            <p className="text-2xl font-bold">{RETAINER_SUMMARY.avgBorderTransitHours}h</p>
-          </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-            <div className="mb-1 flex items-center gap-2 text-emerald-700">
-              <PiggyBank size={14} />
-              <span className="text-xs font-mono uppercase tracking-wide">Capital saved MTD</span>
-            </div>
-            <p className="text-2xl font-bold text-emerald-700">${RETAINER_SUMMARY.capitalSavedMtdUsd.toLocaleString()}</p>
-          </div>
+          <KpiCard icon={Package} label="Active shipments" value={String(RETAINER_SUMMARY.activeShipments)} />
+          <KpiCard
+            icon={ShieldCheck}
+            label="On-time clearance"
+            value={`${RETAINER_SUMMARY.onTimeBorderClearancePct}%`}
+            status={RETAINER_SUMMARY.onTimeBorderClearancePct < 80 ? "attention" : "neutral"}
+          />
+          <KpiCard icon={Clock} label="Avg border transit" value={`${RETAINER_SUMMARY.avgBorderTransitHours}h`} />
+          <KpiCard
+            icon={PiggyBank}
+            label="Capital saved MTD"
+            value={`$${RETAINER_SUMMARY.capitalSavedMtdUsd.toLocaleString()}`}
+            status={RETAINER_SUMMARY.capitalSavedMtdUsd > 0 ? "good" : "neutral"}
+          />
         </div>
 
         {/* Quick action hub */}
@@ -149,9 +145,10 @@ export function ClientPortalPage() {
                     <ModeIcon size={16} className="shrink-0 text-slate-400" />
                     <div className="min-w-0 flex-1">
                       <p className="font-mono text-sm font-semibold text-slate-900">{shipment.id}</p>
-                      <p className="text-xs text-slate-500">{shipment.lane}</p>
+                      <p className="mb-1.5 text-xs text-slate-500">{shipment.lane}</p>
+                      <ProgressBar percent={shipment.tracker.percentComplete} colorClass={STATUS_CHIP_BAR_CLASS[shipment.statusChip]} />
                     </div>
-                    <span className="hidden text-xs text-slate-500 sm:inline">{shipment.tracker.percentComplete}% complete</span>
+                    <span className="hidden text-xs text-slate-500 sm:inline">{shipment.tracker.percentComplete}%</span>
                     <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CHIP_CLASS[shipment.statusChip]}`}>
                       {STATUS_CHIP_LABEL[shipment.statusChip]}
                     </span>

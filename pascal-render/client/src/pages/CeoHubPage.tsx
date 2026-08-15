@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { BorderCameraGrid } from "../components/BorderCameraGrid";
+import { KpiCard, ProgressBar } from "../components/KpiCard";
 import { api } from "../config/api";
 
 interface CeoMetrics {
@@ -167,42 +168,41 @@ export function CeoHubPage() {
 
         {metrics && (
           <>
-            {/* KPI row */}
+            {/* KPI row — color reflects whether the metric needs attention,
+                not whether it's a revenue number, consistent across every desk. */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-1 flex items-center gap-2 text-slate-500">
-                  <TrendingUp size={14} />
-                  <span className="text-xs font-mono uppercase tracking-wide">Border transit velocity</span>
+              <KpiCard
+                icon={TrendingUp}
+                label="Border transit velocity"
+                value={metrics.borderTransitVelocityMinutes !== undefined ? `${metrics.borderTransitVelocityMinutes}m` : "—"}
+                caption="Live Pacific Highway commercial avg"
+                status={metrics.borderTransitVelocityMinutes !== undefined && metrics.borderTransitVelocityMinutes > 45 ? "attention" : "neutral"}
+              />
+
+              <div className={`rounded-xl border p-4 ${metrics.documentHealthScore < 70 ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-white shadow-sm"}`}>
+                <div className={`mb-1 flex items-center gap-2 ${metrics.documentHealthScore < 70 ? "text-amber-700" : "text-slate-500"}`}>
+                  <FileCheck size={15} />
+                  <span className="text-[13px] font-mono uppercase tracking-wide">Document health score</span>
                 </div>
-                <p className="text-2xl font-bold">{metrics.borderTransitVelocityMinutes !== undefined ? `${metrics.borderTransitVelocityMinutes}m` : "—"}</p>
-                <p className="text-xs text-slate-400">Live Pacific Highway commercial avg</p>
+                <p className={`mb-1.5 text-[28px] font-bold leading-tight ${metrics.documentHealthScore < 70 ? "text-amber-700" : ""}`}>{metrics.documentHealthScore}%</p>
+                <ProgressBar percent={metrics.documentHealthScore} colorClass={metrics.documentHealthScore < 70 ? "bg-amber-500" : "bg-emerald-500"} />
+                <p className={`mt-1 text-[13px] ${metrics.documentHealthScore < 70 ? "text-amber-600" : "text-slate-400"}`}>POA status (60%) + vault activity (40%)</p>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-1 flex items-center gap-2 text-slate-500">
-                  <FileCheck size={14} />
-                  <span className="text-xs font-mono uppercase tracking-wide">Document health score</span>
-                </div>
-                <p className="text-2xl font-bold">{metrics.documentHealthScore}%</p>
-                <p className="text-xs text-slate-400">POA status (60%) + vault activity (40%)</p>
-              </div>
+              <KpiCard
+                icon={DollarSign}
+                label="MTD Agent 3 savings"
+                value={`$${metrics.mtdSpotSavingsUsd.toLocaleString()}`}
+                caption={metrics.mtdSpotSavingsUsd > 0 ? "Real captured spot-rate savings this month" : "No savings captured yet this month"}
+                status={metrics.mtdSpotSavingsUsd > 0 ? "good" : "attention"}
+              />
 
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <div className="mb-1 flex items-center gap-2 text-emerald-700">
-                  <DollarSign size={14} />
-                  <span className="text-xs font-mono uppercase tracking-wide">MTD Agent 3 savings</span>
-                </div>
-                <p className="text-2xl font-bold text-emerald-700">${metrics.mtdSpotSavingsUsd.toLocaleString()}</p>
-                <p className="text-xs text-emerald-600">Real captured spot-rate savings this month</p>
-              </div>
-
-              <div className={`rounded-xl border p-4 ${metrics.pendingExecutiveReviewCount > 0 ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-white shadow-sm"}`}>
-                <div className={`mb-1 flex items-center gap-2 ${metrics.pendingExecutiveReviewCount > 0 ? "text-amber-700" : "text-slate-500"}`}>
-                  <ShieldAlert size={14} />
-                  <span className="text-xs font-mono uppercase tracking-wide">Pending executive review</span>
-                </div>
-                <p className={`text-2xl font-bold ${metrics.pendingExecutiveReviewCount > 0 ? "text-amber-700" : ""}`}>{metrics.pendingExecutiveReviewCount}</p>
-              </div>
+              <KpiCard
+                icon={ShieldAlert}
+                label="Pending executive review"
+                value={String(metrics.pendingExecutiveReviewCount)}
+                status={metrics.pendingExecutiveReviewCount > 0 ? "attention" : "neutral"}
+              />
             </div>
 
             {/* Net Retainer Value ROI bar */}
@@ -268,7 +268,11 @@ export function CeoHubPage() {
                       </p>
                     </div>
                   ))}
-                  {activity.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-400">No activity logged yet.</p>}
+                  {activity.length === 0 && (
+                    <p className="px-5 py-8 text-center text-sm text-slate-400">
+                      No activity yet — this fills in as shipments move through the pipeline.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
