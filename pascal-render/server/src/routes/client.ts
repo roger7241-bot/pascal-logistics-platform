@@ -29,6 +29,7 @@ import type { BorderTelemetryService } from "../services/borderTelemetryService.
 
 export interface ExtendedShipment extends ClientShipmentSummary {
   poeId?: string;
+  orgId?: string; // real filter key — clientOrg above is just the display name
   clientOrg?: string;
   etaIso?: string;
   equipmentType?: string;
@@ -65,6 +66,7 @@ export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
     driverPhone: "+16045551234",
     htsCode: "3808.91.5010",
     poeId: "pacific_highway",
+    orgId: "org_meridian",
     clientOrg: "Meridian Cold Chain",
     etaIso: new Date(Date.now() + 90 * 60_000).toISOString(),
     equipmentType: "Reefer 53ft",
@@ -90,6 +92,7 @@ export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
     driverName: "Sarah Kim",
     driverPhone: "+14255559876",
     poeId: "sumas",
+    orgId: "org_meridian",
     clientOrg: "Meridian Cold Chain",
     etaIso: new Date(Date.now() + 30 * 60_000).toISOString(),
     equipmentType: "Dry Van 53ft",
@@ -111,6 +114,7 @@ export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
     driverPhone: "+16045557788",
     htsCode: "8471.30.0100",
     poeId: "aldergrove",
+    orgId: "org_firetech",
     clientOrg: "Firetech Manufacturing",
     etaIso: new Date(Date.now() + 55 * 60_000).toISOString(),
     equipmentType: "Dry Van 48ft",
@@ -125,6 +129,8 @@ export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
     statusChip: "vessel_en_route",
     lane: "Shanghai -> Vancouver",
     direction: "inbound",
+    orgId: "org_meridian",
+    clientOrg: "Meridian Cold Chain",
     bolNumber: "MSCUBN4471902",
     updatedAtIso: new Date(Date.now() - 6 * 3_600_000).toISOString(),
     vesselName: "MSC Aurora",
@@ -143,6 +149,8 @@ export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
     statusChip: "flight_departed",
     lane: "YVR -> LHR",
     direction: "outbound",
+    orgId: "org_firetech",
+    clientOrg: "Firetech Manufacturing",
     bolNumber: "014-88750219",
     updatedAtIso: new Date(Date.now() - 45 * 60_000).toISOString(),
     flightNumber: "AC854",
@@ -198,9 +206,13 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     return res.status(200).json({ results });
   });
 
-  router.get("/shipments", (_req: Request, res: Response) => {
+  router.get("/shipments", (req: Request, res: Response) => {
     const snapshot = telemetryService.getSnapshot();
-    const withTracker = SAMPLE_SHIPMENTS.map((shipment) => {
+    // Operators see every org's shipments (that's their job); a client
+    // user only ever sees their own org's — derived from the verified
+    // session, never trusted from a query param.
+    const visibleShipments = req.authUser?.role === "client" ? SAMPLE_SHIPMENTS.filter((s) => s.orgId === req.authUser!.orgId) : SAMPLE_SHIPMENTS;
+    const withTracker = visibleShipments.map((shipment) => {
       const tracker = getTrackerState(shipment.transportMode, shipment.currentMilestone);
       const liveWaitMinutes =
         shipment.transportMode === "road" && shipment.poeId
@@ -215,6 +227,12 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
   router.get("/shipments/:id", (req: Request, res: Response) => {
     const shipment = findShipment(req.params.id);
     if (!shipment) return res.status(404).json({ error: `No shipment on file with id ${req.params.id}.` });
+    // A client user can't fetch another org's shipment by guessing/typing
+    // an ID — 404 rather than 403, so the response doesn't even confirm
+    // whether a given shipment ID exists for a different org.
+    if (req.authUser?.role === "client" && shipment.orgId !== req.authUser.orgId) {
+      return res.status(404).json({ error: `No shipment on file with id ${req.params.id}.` });
+    }
     return res.status(200).json({ ...shipment, tracker: getTrackerState(shipment.transportMode, shipment.currentMilestone) });
   });
 

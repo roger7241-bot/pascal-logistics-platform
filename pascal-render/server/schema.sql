@@ -896,3 +896,36 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS address_line2 TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS secondary_contact_name TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS secondary_contact_email TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS secondary_contact_phone TEXT;
+
+-- ============================================================================
+-- REAL AUTHENTICATION — closes the "no auth layer" gap that was previously
+-- documented as a known limitation (DEMO_ORG_ID hardcoded, org_id trusted
+-- from request params). password_hash is bcrypt, never plaintext.
+-- role='operator' users have org_id NULL (internal Pascal staff, not
+-- scoped to one client). role='client' users are scoped to exactly one
+-- org_id and can only ever see that org's data once middleware is wired.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT, -- NULL for operator/internal users
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  display_name TEXT,
+  role TEXT NOT NULL CHECK (role IN ('operator', 'client')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_org_id ON users (org_id);
+
+-- Seed real login accounts so the deployed app isn't immediately locked
+-- out with zero users once auth is required. Password for BOTH accounts
+-- below is "PascalTest2026!" — a temporary, testing-only shared secret.
+-- Change this the moment a real client is onboarded (there's a real
+-- POST /api/auth/change-password endpoint for this).
+INSERT INTO users (org_id, email, password_hash, display_name, role)
+VALUES (NULL, 'operator@pascallogistics.com', '$2b$10$Hvj1xKyh3tFJ.fQnu8n75OvXYjtvt1yf5vQHZGsQAWKU046aIrxs.', 'Roger Jervis', 'operator')
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO users (org_id, email, password_hash, display_name, role)
+VALUES ('org_meridian', 'client@meridiancoldchain.com', '$2b$10$Hvj1xKyh3tFJ.fQnu8n75OvXYjtvt1yf5vQHZGsQAWKU046aIrxs.', 'Alicia Ford', 'client')
+ON CONFLICT (email) DO NOTHING;

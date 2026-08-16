@@ -28,7 +28,7 @@ export function SimulationButton() {
     setError(undefined);
     setTrace(undefined);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/simulation/run`, { method: "POST" });
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/simulation/run`, { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error(`Simulation failed with status ${res.status}`);
       const data = await res.json();
       setTrace(data);

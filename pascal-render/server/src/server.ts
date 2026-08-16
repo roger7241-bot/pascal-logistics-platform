@@ -6,6 +6,7 @@
 
 import express, { type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import http from "node:http";
 import { WsManager } from "./ws/wsManager.js";
 import { createShipmentsRouter } from "./routes/shipments.js";
@@ -30,6 +31,8 @@ import { createChatRouter } from "./routes/chat.js";
 import { createCallsRouter } from "./routes/calls.js";
 import { createDispatchRouter, createMagicUploadRouter } from "./routes/dispatch.js";
 import { createPublicTrackingRouter } from "./routes/publicTracking.js";
+import { createAuthRouter } from "./routes/auth.js";
+import { requireAuth, requireOperator } from "./middleware/requireAuth.js";
 import { generateMorningDigest } from "./services/morningBrief.js";
 import { BorderTelemetryService } from "./services/borderTelemetryService.js";
 
@@ -55,11 +58,12 @@ app.set("trust proxy", 1);
 app.use(
   cors({
     origin: CLIENT_ORIGIN_URL,
-    methods: ["GET", "POST", "PATCH"],
+    methods: ["GET", "POST", "PATCH", "DELETE"],
     credentials: true,
   }),
 );
 app.use(express.json({ limit: "2mb" }));
+app.use(cookieParser());
 
 const httpServer = http.createServer(app);
 const wsManager = new WsManager(httpServer);
@@ -78,6 +82,39 @@ app.get("/health", (_req: Request, res: Response) => {
 app.use("/api/shipments", createShipmentsRouter(wsManager));
 app.use("/api/border", createBorderRouter(borderTelemetryService));
 app.use("/api/exceptions", createExceptionsRouter(wsManager));
+
+// Login/logout — must stay reachable without a session.
+app.use("/api/auth", createAuthRouter());
+
+// Genuinely public, unauthenticated-by-design routes — a customer
+// tracking a package, or a forklift driver's phone scanning a document
+// mid-dock, shouldn't need to log in first.
+app.use("/api/v1/magic-upload", createMagicUploadRouter());
+app.use("/api/v1/track", createPublicTrackingRouter());
+
+// Everything else below requires a real, verified session — this is the
+// actual fix for the "no auth layer, org_id trusted from request params"
+// gap. requireOperator (Pascal staff only) gates the routes with no
+// client-facing counterpart. requireAuth (either role) gates everything
+// a shipper legitimately calls too — checked against actual frontend
+// call sites, not assumed: /api/shipments/ingest is the wizard's booking
+// submit, /api/border and /api/calendar and /api/reroute all have real
+// client-portal pages calling them, /api/simulation's demo button is on
+// both headers, /api/documents backs the wizard's document parser.
+// /api/exceptions has no frontend caller at all currently, so it
+// defaults to the more restrictive requireOperator rather than being
+// left open on the assumption it'll only ever be operator-facing.
+app.use("/api/operator", requireOperator);
+app.use("/api/ceo", requireOperator);
+app.use("/api/exceptions", requireOperator);
+app.use("/api/client", requireAuth);
+app.use("/api/shipments", requireAuth);
+app.use("/api/border", requireAuth);
+app.use("/api/simulation", requireAuth);
+app.use("/api/documents", requireAuth);
+app.use("/api/calendar", requireAuth);
+app.use("/api/reroute", requireAuth);
+
 app.use("/api/client", createClientRouter(wsManager, borderTelemetryService));
 app.use("/api/client", createFacilitiesRouter());
 app.use("/api/operator", createOperatorFacilitiesRouter());
@@ -92,9 +129,7 @@ app.use("/api/operator", createVaultRouter());
 app.use("/api/calendar", createCalendarRouter());
 app.use("/api/reroute", createRerouteRouter());
 app.use("/api/operator", createDispatchRouter());
-app.use("/api/v1/magic-upload", createMagicUploadRouter());
-app.use("/api/v1/track", createPublicTrackingRouter());
-app.get("/api/operator/morning-brief/:orgId", async (req, res) => {
+app.get("/api/operator/morning-brief/:orgId", requireOperator, async (req, res) => {
   const narrative = await generateMorningDigest(req.params.orgId);
   res.status(200).json({ narrative });
 });

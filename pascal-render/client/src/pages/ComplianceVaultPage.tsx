@@ -39,7 +39,7 @@ export function ComplianceVaultPage() {
   useEffect(() => {
     Promise.all([
       api.poaStatus<PoaRecord>(),
-      fetch(`${import.meta.env.VITE_API_BASE_URL}/api/operator/vault?orgId=org_meridian`).then((r) => r.json()),
+      fetch(`${import.meta.env.VITE_API_BASE_URL}/api/operator/vault?orgId=org_meridian`, { credentials: "include" }).then((r) => r.json()),
     ])
       .then(([poaResult, vaultResult]) => {
         setPoa(poaResult);

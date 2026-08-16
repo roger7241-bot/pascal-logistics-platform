@@ -1,6 +1,7 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Compass } from "lucide-react";
 import { SimulationButton } from "./SimulationButton";
+import { useAuth } from "../contexts/AuthContext";
 
 const NAV_ITEMS = [
   { to: "/", label: "Manager Hub" },
@@ -12,6 +13,13 @@ const NAV_ITEMS = [
 
 export function AppHeader() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <header className="border-b border-slate-800 bg-slate-900">
@@ -25,7 +33,12 @@ export function AppHeader() {
             <p className="text-sm font-mono uppercase tracking-wide text-slate-400">Fractional Logistics Platform</p>
           </div>
         </div>
-        <SimulationButton />
+        <div className="flex items-center gap-3">
+          <SimulationButton />
+          <button onClick={handleLogout} className="text-xs font-medium text-slate-400 hover:text-slate-200">
+            Log out
+          </button>
+        </div>
       </div>
       <nav className="flex gap-1 border-t border-slate-800 px-2">
         {NAV_ITEMS.map((item) => (

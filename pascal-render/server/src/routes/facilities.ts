@@ -11,7 +11,17 @@ import { pool } from "../db/pool.js";
 import type { AlertPreference, CommodityProfile, FacilityProfile } from "../types/facility.js";
 import { searchAddresses } from "../services/addressAutocomplete.js";
 
-const DEMO_ORG_ID = "org_meridian"; // stand-in for the authenticated session's orgId
+const DEMO_ORG_ID = "org_meridian"; // operator-side fallback when no client org is scoped
+
+/** A client is always forced to their own org, regardless of what (if
+ * anything) they send — this is the actual fix for the previously
+ * hardcoded DEMO_ORG_ID gap. An operator falls back to the demo org for
+ * now (operators don't yet have a per-request "acting as this client"
+ * selector on these endpoints) rather than silently writing to no org. */
+function scopedOrgId(req: Request): string {
+  if (req.authUser?.role === "client") return req.authUser.orgId ?? DEMO_ORG_ID;
+  return DEMO_ORG_ID;
+}
 
 function rowToFacility(row: Record<string, unknown>): FacilityProfile {
   return {
@@ -82,8 +92,17 @@ function rowToCommodity(row: Record<string, unknown>): CommodityProfile {
 export function createFacilitiesRouter(): Router {
   const router = Router();
 
-  router.get("/facilities", async (_req: Request, res: Response) => {
-    const result = await pool.query("SELECT * FROM facilities WHERE org_id = $1 ORDER BY created_at DESC", [DEMO_ORG_ID]);
+  router.get("/facilities", async (req: Request, res: Response) => {
+    // A client only ever sees their own org's facilities — derived from
+    // the verified session, not the previous hardcoded DEMO_ORG_ID
+    // constant (which would have shown every client the same demo org's
+    // facilities regardless of who was actually logged in). Operators
+    // see all orgs' facilities, matching how they work across multiple
+    // clients elsewhere in this app (CRM, accounts).
+    const scopedOrgId = req.authUser?.role === "client" ? req.authUser.orgId : undefined;
+    const result = scopedOrgId
+      ? await pool.query("SELECT * FROM facilities WHERE org_id = $1 ORDER BY created_at DESC", [scopedOrgId])
+      : await pool.query("SELECT * FROM facilities ORDER BY created_at DESC");
     res.status(200).json({ facilities: result.rows.map(rowToFacility) });
   });
 
@@ -111,7 +130,7 @@ export function createFacilitiesRouter(): Router {
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
       RETURNING *`,
       [
-        DEMO_ORG_ID,
+        scopedOrgId(req),
         body.role ?? "both",
         body.name,
         body.street,
@@ -139,8 +158,11 @@ export function createFacilitiesRouter(): Router {
     return res.status(201).json(rowToFacility(result.rows[0]));
   });
 
-  router.get("/commodities", async (_req: Request, res: Response) => {
-    const result = await pool.query("SELECT * FROM commodities WHERE org_id = $1 ORDER BY created_at DESC", [DEMO_ORG_ID]);
+  router.get("/commodities", async (req: Request, res: Response) => {
+    const scoped = req.authUser?.role === "client" ? req.authUser.orgId : undefined;
+    const result = scoped
+      ? await pool.query("SELECT * FROM commodities WHERE org_id = $1 ORDER BY created_at DESC", [scoped])
+      : await pool.query("SELECT * FROM commodities ORDER BY created_at DESC");
     res.status(200).json({ commodities: result.rows.map(rowToCommodity) });
   });
 
@@ -166,7 +188,7 @@ export function createFacilitiesRouter(): Router {
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *`,
       [
-        DEMO_ORG_ID,
+        scopedOrgId(req),
         body.productName,
         body.description ?? null,
         body.htsCode,
@@ -184,8 +206,8 @@ export function createFacilitiesRouter(): Router {
     return res.status(201).json(rowToCommodity(result.rows[0]));
   });
 
-  router.get("/alert-preferences", async (_req: Request, res: Response) => {
-    const result = await pool.query("SELECT role, channels FROM alert_preferences WHERE org_id = $1", [DEMO_ORG_ID]);
+  router.get("/alert-preferences", async (req: Request, res: Response) => {
+    const result = await pool.query("SELECT role, channels FROM alert_preferences WHERE org_id = $1", [scopedOrgId(req)]);
     const alertPreferences: AlertPreference[] = result.rows.map((r) => ({ role: r.role, channels: r.channels }));
     res.status(200).json({ alertPreferences });
   });
@@ -196,9 +218,9 @@ export function createFacilitiesRouter(): Router {
       return res.status(400).json({ error: "alertPreferences must be an array." });
     }
 
-    await pool.query("DELETE FROM alert_preferences WHERE org_id = $1", [DEMO_ORG_ID]);
+    await pool.query("DELETE FROM alert_preferences WHERE org_id = $1", [scopedOrgId(req)]);
     for (const pref of body.alertPreferences) {
-      await pool.query("INSERT INTO alert_preferences (org_id, role, channels) VALUES ($1, $2, $3)", [DEMO_ORG_ID, pref.role, pref.channels]);
+      await pool.query("INSERT INTO alert_preferences (org_id, role, channels) VALUES ($1, $2, $3)", [scopedOrgId(req), pref.role, pref.channels]);
     }
 
     return res.status(200).json({ alertPreferences: body.alertPreferences });

@@ -96,6 +96,7 @@ export function ClientOpsBaselineWizard({ onClose, onComplete }: ClientOpsBaseli
         await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/client/facilities`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ ...f, pickupLeadTimeHours: Number(f.pickupLeadTimeHours) }),
         }).then((r) => {
           if (!r.ok) throw new Error(`Failed to save facility "${f.name}"`);
@@ -105,6 +106,7 @@ export function ClientOpsBaselineWizard({ onClose, onComplete }: ClientOpsBaseli
         const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/client/commodities`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify(c),
         });
         if (!res.ok) {
@@ -120,6 +122,7 @@ export function ClientOpsBaselineWizard({ onClose, onComplete }: ClientOpsBaseli
       await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/client/alert-preferences`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ alertPreferences }),
       });
 

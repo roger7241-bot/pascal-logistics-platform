@@ -239,6 +239,7 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/documents/extract`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ documentText }),
       });
       const result = await res.json();

@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Compass,
   Inbox,
@@ -15,6 +15,7 @@ import {
   Phone,
   Zap,
 } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 const OPERATOR_DESKS = [
   { to: "/operator", label: "Manager Hub", icon: Gauge },
@@ -34,6 +35,13 @@ const OPERATOR_DESKS = [
 
 export function OperatorHeader() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <header className="border-b border-slate-800 bg-slate-900">
@@ -54,6 +62,9 @@ export function OperatorHeader() {
           <Link to="/client-portal" className="rounded px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200">
             Client Portal
           </Link>
+          <button onClick={handleLogout} className="rounded px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200">
+            Log out
+          </button>
         </div>
       </div>
       <nav className="flex flex-wrap gap-1 border-t border-slate-800 px-2">

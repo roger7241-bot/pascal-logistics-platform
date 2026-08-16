@@ -51,6 +51,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
+  authLogin: <TResult = unknown>(email: string, password: string) => request<TResult>("/api/auth/login", { method: "POST", body: { email, password } }),
+  authLogout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
+  authMe: <TResult = unknown>() => request<TResult>("/api/auth/me"),
+  authChangePassword: (currentPassword: string, newPassword: string) =>
+    request<{ ok: boolean }>("/api/auth/change-password", { method: "POST", body: { currentPassword, newPassword } }),
   health: () => request<{ status: string; service: string; websocket: string; timestampIso: string }>("/health"),
   ingestShipment: <TResult = unknown>(payload: unknown) => request<TResult>("/api/shipments/ingest", { method: "POST", body: payload }),
   borderTelemetry: <TResult = unknown>() => request<TResult>("/api/border/telemetry"),

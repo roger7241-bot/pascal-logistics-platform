@@ -58,6 +58,9 @@ services:
         sync: false
       - key: TOMTOM_API_KEY
         sync: false
+      - key: JWT_SECRET
+        sync: false
+        generateValue: true
       - key: PUBLIC_API_BASE_URL
         sync: false
       - key: AWS_ACCESS_KEY_ID

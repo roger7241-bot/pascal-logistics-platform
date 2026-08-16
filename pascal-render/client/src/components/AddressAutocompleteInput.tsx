@@ -42,7 +42,7 @@ export function AddressAutocompleteInput({ value, onChange, onSelect, placeholde
       try {
         const params = new URLSearchParams({ query: value });
         if (countrySet) params.set("countrySet", countrySet);
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/client/address-autocomplete?${params}`);
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/client/address-autocomplete?${params}`, { credentials: "include" });
         const data = (await res.json()) as { suggestions: AddressSuggestion[]; simulated: boolean };
         setSuggestions(data.suggestions);
         setOpen(data.suggestions.length > 0);
