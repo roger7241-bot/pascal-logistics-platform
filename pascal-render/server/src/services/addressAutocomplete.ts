@@ -23,6 +23,7 @@ export interface AddressSuggestion {
 export interface AddressAutocompleteResult {
   suggestions: AddressSuggestion[];
   simulated: boolean;
+  error?: string; // surfaces the REAL reason zero results came back, instead of looking identical to a genuine no-match
 }
 
 /** countrySet restricts results to specific countries (comma-separated
@@ -44,7 +45,15 @@ export async function searchAddresses(query: string, countrySet = "CA,US,MX"): P
     url.searchParams.set("idxSet", "Addr"); // addresses only — excludes POIs/businesses
 
     const response = await fetch(url.toString());
-    if (!response.ok) throw new Error(`TomTom API returned ${response.status}`);
+    if (!response.ok) {
+      // Surface the REAL status + TomTom's own error body, not a generic
+      // message — this is exactly what was previously hidden behind an
+      // empty-array response that looked identical to a genuine no-match.
+      const bodyText = await response.text().catch(() => "");
+      const message = `TomTom API returned ${response.status} ${response.statusText}${bodyText ? ` — ${bodyText.slice(0, 300)}` : ""}`;
+      console.error(`Address autocomplete failed: ${message}`);
+      return { suggestions: [], simulated: false, error: message };
+    }
     const data = (await response.json()) as { results?: Array<{ address?: Record<string, string> }> };
 
     const suggestions: AddressSuggestion[] = (data.results ?? [])
@@ -62,7 +71,8 @@ export async function searchAddresses(query: string, countrySet = "CA,US,MX"): P
 
     return { suggestions, simulated: false };
   } catch (err) {
-    console.error(`Address autocomplete failed: ${err instanceof Error ? err.message : "unknown error"}`);
-    return { suggestions: [], simulated: false };
+    const message = err instanceof Error ? err.message : "Unknown error calling TomTom.";
+    console.error(`Address autocomplete failed: ${message}`);
+    return { suggestions: [], simulated: false, error: message };
   }
 }
