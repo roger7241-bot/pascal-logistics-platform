@@ -24,6 +24,16 @@ export interface Account {
   companyName: string;
   legalEntityName?: string;
   operatingDba?: string;
+  addressStreet?: string;
+  addressCity?: string;
+  addressStateOrProvince?: string;
+  addressPostalCode?: string;
+  addressCountryCode?: string;
+  website?: string;
+  industry?: string;
+  shippingContactName?: string;
+  shippingContactEmail?: string;
+  shippingContactPhone?: string;
   primaryContactName?: string;
   primaryContactEmail?: string;
   primaryContactPhone?: string;
@@ -65,6 +75,16 @@ function rowToAccount(row: Record<string, unknown>): Account {
     orgId: row.org_id as string,
     companyName: row.company_name as string,
     legalEntityName: (row.legal_entity_name as string) ?? undefined,
+    addressStreet: (row.address_street as string) ?? undefined,
+    addressCity: (row.address_city as string) ?? undefined,
+    addressStateOrProvince: (row.address_state_or_province as string) ?? undefined,
+    addressPostalCode: (row.address_postal_code as string) ?? undefined,
+    addressCountryCode: (row.address_country_code as string) ?? undefined,
+    website: (row.website as string) ?? undefined,
+    industry: (row.industry as string) ?? undefined,
+    shippingContactName: (row.shipping_contact_name as string) ?? undefined,
+    shippingContactEmail: (row.shipping_contact_email as string) ?? undefined,
+    shippingContactPhone: (row.shipping_contact_phone as string) ?? undefined,
     operatingDba: (row.operating_dba as string) ?? undefined,
     primaryContactName: (row.primary_contact_name as string) ?? undefined,
     primaryContactEmail: (row.primary_contact_email as string) ?? undefined,
@@ -139,13 +159,15 @@ export function createAccountsRouter(): Router {
     const result = await pool.query(
       `INSERT INTO accounts (
         org_id, company_name, legal_entity_name, primary_contact_name, primary_contact_email, primary_contact_phone,
+        address_street, address_city, address_state_or_province, address_postal_code, address_country_code, website, industry,
+        shipping_contact_name, shipping_contact_email, shipping_contact_phone,
         country_of_incorporation, us_ein, us_dot_number, mc_ff_number, ca_bn, ca_bn_program_suffix, mx_rfc,
         billing_currency, retainer_monthly_usd, overage_rate_usd, payment_terms,
         ap_email, ap_phone, ap_contact_name,
         customs_broker_name, customs_broker_account_ref, customs_broker_email, customs_broker_ops_phone, customs_poa_status, default_poe_preference,
         primary_commodities, requires_reefer, requires_hazmat, preferred_carrier_scacs,
         account_status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,'onboarding') RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,'onboarding') RETURNING *`,
       [
         body.orgId,
         body.companyName,
@@ -153,6 +175,16 @@ export function createAccountsRouter(): Router {
         body.primaryContactName ?? null,
         body.primaryContactEmail ?? null,
         body.primaryContactPhone ?? null,
+        body.addressStreet ?? null,
+        body.addressCity ?? null,
+        body.addressStateOrProvince ?? null,
+        body.addressPostalCode ?? null,
+        body.addressCountryCode ?? null,
+        body.website ?? null,
+        body.industry ?? null,
+        body.shippingContactName ?? null,
+        body.shippingContactEmail ?? null,
+        body.shippingContactPhone ?? null,
         body.countryOfIncorporation ?? null,
         body.usEin ?? null,
         body.usDotNumber ?? null,

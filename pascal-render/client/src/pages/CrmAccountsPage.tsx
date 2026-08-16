@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Users, Plus, X, Loader2, TrendingUp, ShieldCheck, Building2, FileStack, Truck, Receipt, Warehouse, ChevronRight } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { KpiCard, ProgressBar } from "../components/KpiCard";
+import { AddressAutocompleteInput } from "../components/AddressAutocompleteInput";
 import { api } from "../config/api";
 
 interface Account {
@@ -10,6 +11,16 @@ interface Account {
   companyName: string;
   legalEntityName?: string;
   operatingDba?: string;
+  addressStreet?: string;
+  addressCity?: string;
+  addressStateOrProvince?: string;
+  addressPostalCode?: string;
+  addressCountryCode?: string;
+  website?: string;
+  industry?: string;
+  shippingContactName?: string;
+  shippingContactEmail?: string;
+  shippingContactPhone?: string;
   primaryContactName?: string;
   primaryContactEmail?: string;
   operationsManagerName?: string;
@@ -110,6 +121,16 @@ export function CrmAccountsPage() {
   const [orgIdManuallyEdited, setOrgIdManuallyEdited] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [primaryContactName, setPrimaryContactName] = useState("");
+  const [addressStreet, setAddressStreet] = useState("");
+  const [addressCity, setAddressCity] = useState("");
+  const [addressStateOrProvince, setAddressStateOrProvince] = useState("");
+  const [addressPostalCode, setAddressPostalCode] = useState("");
+  const [addressCountryCode, setAddressCountryCode] = useState("US");
+  const [website, setWebsite] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [shippingContactName, setShippingContactName] = useState("");
+  const [shippingContactEmail, setShippingContactEmail] = useState("");
+  const [shippingContactPhone, setShippingContactPhone] = useState("");
   const [primaryContactEmail, setPrimaryContactEmail] = useState("");
   const [primaryContactPhone, setPrimaryContactPhone] = useState("");
   const [countryOfIncorporation, setCountryOfIncorporation] = useState("US");
@@ -177,6 +198,16 @@ export function CrmAccountsPage() {
         primaryContactName: primaryContactName || undefined,
         primaryContactEmail: primaryContactEmail || undefined,
         primaryContactPhone: primaryContactPhone || undefined,
+        addressStreet: addressStreet || undefined,
+        addressCity: addressCity || undefined,
+        addressStateOrProvince: addressStateOrProvince || undefined,
+        addressPostalCode: addressPostalCode || undefined,
+        addressCountryCode: addressCountryCode || undefined,
+        website: website || undefined,
+        industry: industry || undefined,
+        shippingContactName: shippingContactName || undefined,
+        shippingContactEmail: shippingContactEmail || undefined,
+        shippingContactPhone: shippingContactPhone || undefined,
         countryOfIncorporation,
         billingCurrency,
         retainerMonthlyUsd: retainerMonthlyUsd ? Number(retainerMonthlyUsd) : undefined,
@@ -200,6 +231,15 @@ export function CrmAccountsPage() {
       setOrgIdManuallyEdited(false);
       setCompanyName("");
       setPrimaryContactName("");
+      setAddressStreet("");
+      setAddressCity("");
+      setAddressStateOrProvince("");
+      setAddressPostalCode("");
+      setWebsite("");
+      setIndustry("");
+      setShippingContactName("");
+      setShippingContactEmail("");
+      setShippingContactPhone("");
       setPrimaryContactEmail("");
       setPrimaryContactPhone("");
       setTaxIdField("");
@@ -350,6 +390,26 @@ export function CrmAccountsPage() {
                       <p>
                         <strong>AP:</strong> {detail.account.apEmail ?? "—"}
                       </p>
+                      <p>
+                        <strong>Address:</strong>{" "}
+                        {detail.account.addressStreet
+                          ? `${detail.account.addressStreet}, ${detail.account.addressCity ?? ""}, ${detail.account.addressStateOrProvince ?? ""} ${detail.account.addressPostalCode ?? ""}`.replace(/\s+/g, " ").trim()
+                          : "—"}
+                      </p>
+                      {(detail.account.website || detail.account.industry) && (
+                        <p>
+                          {detail.account.website && <strong>Web:</strong>} {detail.account.website ?? ""}
+                          {detail.account.website && detail.account.industry && " · "}
+                          {detail.account.industry && <strong>Industry:</strong>} {detail.account.industry ?? ""}
+                        </p>
+                      )}
+                      {detail.account.shippingContactName && (
+                        <p>
+                          <strong>Shipping contact:</strong> {detail.account.shippingContactName}
+                          {detail.account.shippingContactPhone && ` · ${detail.account.shippingContactPhone}`}
+                          {detail.account.shippingContactEmail && ` · ${detail.account.shippingContactEmail}`}
+                        </p>
+                      )}
                       <p>
                         <strong>Country of incorporation:</strong> {detail.account.countryOfIncorporation ?? "—"}
                         {detail.account.usEin && ` · EIN ${detail.account.usEin}`}
@@ -538,6 +598,48 @@ export function CrmAccountsPage() {
                   <input value={primaryContactName} onChange={(e) => setPrimaryContactName(e.target.value)} placeholder="Primary contact name" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
                   <input value={primaryContactEmail} onChange={(e) => setPrimaryContactEmail(e.target.value)} placeholder="Email" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
                   <input value={primaryContactPhone} onChange={(e) => setPrimaryContactPhone(e.target.value)} placeholder="Phone" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {/* Company address & profile */}
+              <div>
+                <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Company Address &amp; Profile</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="col-span-2">
+                    <AddressAutocompleteInput
+                      value={addressStreet}
+                      onChange={setAddressStreet}
+                      placeholder="Street address"
+                      onSelect={(s) => {
+                        setAddressStreet(s.streetNumber && s.streetName ? `${s.streetNumber} ${s.streetName}` : s.freeformAddress);
+                        if (s.municipality) setAddressCity(s.municipality);
+                        if (s.countrySubdivisionCode) setAddressStateOrProvince(s.countrySubdivisionCode);
+                        if (s.postalCode) setAddressPostalCode(s.postalCode);
+                        if (s.countryCode) setAddressCountryCode(s.countryCode);
+                      }}
+                    />
+                  </div>
+                  <input value={addressCity} onChange={(e) => setAddressCity(e.target.value)} placeholder="City" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={addressStateOrProvince} onChange={(e) => setAddressStateOrProvince(e.target.value)} placeholder="State / Province" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <select value={addressCountryCode} onChange={(e) => setAddressCountryCode(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                    <option value="US">United States</option>
+                    <option value="CA">Canada</option>
+                    <option value="MX">Mexico</option>
+                  </select>
+                  <input value={addressPostalCode} onChange={(e) => setAddressPostalCode(e.target.value)} placeholder="Postal / ZIP code" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Company website" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Industry (e.g. Cold Chain / F&B)" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {/* Shipping department contact — distinct from the general primary contact and AP/billing contact */}
+              <div>
+                <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Shipping Department Contact</p>
+                <p className="mb-2 text-[11px] text-slate-400">Who Pascal coordinates with day-to-day for pickups, appointments, and shipment-specific questions — not necessarily the primary or billing contact.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={shippingContactName} onChange={(e) => setShippingContactName(e.target.value)} placeholder="Name" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={shippingContactEmail} onChange={(e) => setShippingContactEmail(e.target.value)} placeholder="Email" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={shippingContactPhone} onChange={(e) => setShippingContactPhone(e.target.value)} placeholder="Phone" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
                 </div>
               </div>
 

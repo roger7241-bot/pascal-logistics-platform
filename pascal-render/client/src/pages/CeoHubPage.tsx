@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Radio,
   DollarSign,
+  X,
 } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { BorderCameraGrid } from "../components/BorderCameraGrid";
@@ -48,6 +49,47 @@ interface CorridorShipment {
   poeId?: string;
   customsStatus: string;
   etaIso?: string;
+}
+
+interface SnapshotShipment {
+  id: string;
+  clientOrg: string;
+  lane: string;
+  transportMode: string;
+  direction: "inbound" | "outbound";
+  statusChip: string;
+  etaIso?: string;
+  isOverdue: boolean;
+  carrierName?: string;
+}
+
+interface AttentionItem {
+  category: "customs_hold" | "reroute_pending" | "executive_review" | "usmca_expiring";
+  priority: number;
+  title: string;
+  detail: string;
+  occurredAtIso: string;
+  linkId: string;
+}
+
+interface ShipmentLocation {
+  id: string;
+  clientOrg?: string;
+  lane: string;
+  transportMode: string;
+  statusChip: string;
+  tracker: { steps: { milestone: string; label: string }[]; currentIndex: number; percentComplete: number };
+  carrierName?: string;
+  bolNumber?: string;
+  proNumber?: string;
+  driverName?: string;
+  driverPhone?: string;
+  vesselName?: string;
+  flightNumber?: string;
+  etaIso?: string;
+  updatedAtIso: string;
+  liveBorderWait?: { poeId: string; waitMinutes: number; status: string; asOfIso: string };
+  locationBasis: string;
 }
 
 interface BorderReading {
@@ -93,6 +135,19 @@ export function CeoHubPage() {
   const [alerts, setAlerts] = useState<CeoAlerts | undefined>(undefined);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [corridorShipments, setCorridorShipments] = useState<CorridorShipment[]>([]);
+  const [shipmentSnapshot, setShipmentSnapshot] = useState<{ inbound: SnapshotShipment[]; outbound: SnapshotShipment[] }>({ inbound: [], outbound: [] });
+  const [attentionQueue, setAttentionQueue] = useState<AttentionItem[]>([]);
+  const [locationDetail, setLocationDetail] = useState<ShipmentLocation | undefined>(undefined);
+  const [locationLoading, setLocationLoading] = useState(false);
+
+  function openLocationDetail(shipmentId: string) {
+    setLocationLoading(true);
+    setLocationDetail(undefined);
+    api
+      .ceoShipmentLocation<ShipmentLocation>(shipmentId)
+      .then(setLocationDetail)
+      .finally(() => setLocationLoading(false));
+  }
   const [borderReadings, setBorderReadings] = useState<BorderReading[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<(typeof FILTER_TABS)[number]["key"]>("all");
@@ -105,13 +160,17 @@ export function CeoHubPage() {
       api.ceoActivity<{ activity: ActivityEntry[] }>(),
       api.ceoCorridorShipments<{ shipments: CorridorShipment[] }>(),
       api.borderTelemetry<{ readings: BorderReading[] }>(),
+      api.ceoShipmentSnapshot<{ inbound: SnapshotShipment[]; outbound: SnapshotShipment[] }>(),
+      api.ceoAttentionQueue<{ items: AttentionItem[] }>(),
     ])
-      .then(([m, a, act, corridor, border]) => {
+      .then(([m, a, act, corridor, border, snapshot, attention]) => {
         setMetrics(m);
         setAlerts(a);
         setActivity(act.activity);
         setCorridorShipments(corridor.shipments);
         setBorderReadings(border.readings);
+        setShipmentSnapshot(snapshot);
+        setAttentionQueue(attention.items);
       })
       .finally(() => setLoading(false));
   };
@@ -203,6 +262,87 @@ export function CeoHubPage() {
                 value={String(metrics.pendingExecutiveReviewCount)}
                 status={metrics.pendingExecutiveReviewCount > 0 ? "attention" : "neutral"}
               />
+            </div>
+
+            {/* Attention Queue — the judgment layer, not just more KPI
+                counts. What a manager with real experience would triage
+                first: real, itemized, prioritized action items pulled from
+                genuinely persisted data, not a generic alert count. */}
+            {attentionQueue.length > 0 && (
+              <div className="rounded-xl border border-amber-400 bg-amber-50 shadow-sm">
+                <div className="flex items-center justify-between border-b border-amber-300 px-5 py-3">
+                  <p className="flex items-center gap-1.5 text-sm font-bold text-amber-900">
+                    <ShieldAlert size={15} /> Needs Attention Today
+                  </p>
+                  <span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-bold text-amber-900">{attentionQueue.length}</span>
+                </div>
+                <div className="divide-y divide-amber-200">
+                  {attentionQueue.map((item, i) => (
+                    <button
+                      key={i}
+                      onClick={() => item.linkId.startsWith("SHIP-") && openLocationDetail(item.linkId)}
+                      className={`flex w-full items-start gap-3 px-5 py-3 text-left ${item.linkId.startsWith("SHIP-") ? "hover:bg-amber-100" : "cursor-default"}`}
+                    >
+                      <span
+                        className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          item.category === "customs_hold"
+                            ? "bg-rose-200 text-rose-800"
+                            : item.category === "reroute_pending"
+                            ? "bg-sky-200 text-sky-800"
+                            : item.category === "executive_review"
+                            ? "bg-violet-200 text-violet-800"
+                            : "bg-amber-200 text-amber-800"
+                        }`}
+                      >
+                        {item.category.replace("_", " ")}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                        <p className="text-xs text-slate-500">{item.detail}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Shipment Snapshot — every mode, split by real direction,
+                soonest-ETA-first with overdue items always floated to the
+                top regardless of group. */}
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200 px-5 py-3">
+                <p className="flex items-center gap-1.5 text-sm font-bold">
+                  <Truck size={14} /> Shipment Snapshot — Inbound &amp; Outbound
+                </p>
+              </div>
+              <div className="grid grid-cols-1 divide-y divide-slate-100 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+                {(["inbound", "outbound"] as const).map((dir) => (
+                  <div key={dir}>
+                    <p className="px-5 pt-3 text-xs font-mono uppercase tracking-wide text-slate-400">
+                      {dir === "inbound" ? "Inbound to Canada" : "Outbound from Canada"} ({shipmentSnapshot[dir].length})
+                    </p>
+                    <div className="divide-y divide-slate-100">
+                      {shipmentSnapshot[dir].length === 0 && <p className="px-5 py-6 text-center text-xs text-slate-400">No {dir} shipments on file.</p>}
+                      {shipmentSnapshot[dir].map((s) => (
+                        <button key={s.id} onClick={() => openLocationDetail(s.id)} className="flex w-full items-center justify-between gap-3 px-5 py-2.5 text-left hover:bg-slate-50">
+                          <div className="min-w-0">
+                            <p className="font-mono text-xs font-semibold text-slate-900">
+                              {s.id} <span className="font-sans font-normal text-slate-400">· {s.clientOrg}</span>
+                            </p>
+                            <p className="text-xs text-slate-500">{s.lane}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className={`text-xs font-semibold ${s.isOverdue ? "text-rose-600" : "text-slate-700"}`}>
+                              {s.isOverdue ? "OVERDUE" : s.etaIso ? new Date(s.etaIso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—"}
+                            </p>
+                            <p className="text-[11px] text-slate-400">{s.carrierName ?? s.transportMode}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Net Retainer Value ROI bar */}
@@ -304,6 +444,84 @@ export function CeoHubPage() {
       </main>
 
       {camerasOpen && <BorderCameraGrid onClose={() => setCamerasOpen(false)} poeFilter={Object.keys(COMMERCIAL_POE_LABELS)} />}
+
+      {(locationLoading || locationDetail) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setLocationDetail(undefined)}>
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-200 bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            {locationLoading && !locationDetail ? (
+              <p className="py-8 text-center text-sm text-slate-400">Loading…</p>
+            ) : locationDetail ? (
+              <>
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <p className="font-mono text-sm font-bold">{locationDetail.id}</p>
+                    <p className="text-xs text-slate-500">{locationDetail.clientOrg} · {locationDetail.lane}</p>
+                  </div>
+                  <button onClick={() => setLocationDetail(undefined)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* Milestone tracker — the real "where does this stand" signal */}
+                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-mono uppercase tracking-wide text-slate-500">Current Stage</p>
+                    <p className="text-xs font-semibold text-slate-700">{locationDetail.tracker.percentComplete}% complete</p>
+                  </div>
+                  <ProgressBar percent={locationDetail.tracker.percentComplete} colorClass="bg-cyan-500" />
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {locationDetail.tracker.steps.map((step, i) => (
+                      <span
+                        key={step.milestone}
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          i === locationDetail.tracker.currentIndex
+                            ? "bg-cyan-600 text-white"
+                            : i < locationDetail.tracker.currentIndex
+                            ? "bg-cyan-100 text-cyan-700"
+                            : "bg-slate-200 text-slate-500"
+                        }`}
+                      >
+                        {step.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live border wait, when applicable — genuinely live, not a static number */}
+                {locationDetail.liveBorderWait && (
+                  <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                    <p className="mb-1 text-xs font-mono uppercase tracking-wide text-amber-800">Live Border Wait — {locationDetail.liveBorderWait.poeId}</p>
+                    <p className="text-lg font-bold text-amber-900">{locationDetail.liveBorderWait.waitMinutes} min</p>
+                    <p className="text-[11px] text-amber-600">As of {new Date(locationDetail.liveBorderWait.asOfIso).toLocaleTimeString()} — {locationDetail.liveBorderWait.status}</p>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 text-xs">
+                  <p><strong>Carrier:</strong> {locationDetail.carrierName ?? "—"}</p>
+                  {(locationDetail.bolNumber || locationDetail.proNumber) && (
+                    <p>
+                      {locationDetail.bolNumber && <><strong>BOL #:</strong> <span className="font-mono">{locationDetail.bolNumber}</span></>}
+                      {locationDetail.bolNumber && locationDetail.proNumber && "  ·  "}
+                      {locationDetail.proNumber && <><strong>PRO #:</strong> <span className="font-mono">{locationDetail.proNumber}</span></>}
+                    </p>
+                  )}
+                  {locationDetail.driverName && (
+                    <p><strong>Driver:</strong> {locationDetail.driverName} {locationDetail.driverPhone && `· ${locationDetail.driverPhone}`}</p>
+                  )}
+                  {locationDetail.vesselName && <p><strong>Vessel:</strong> {locationDetail.vesselName}</p>}
+                  {locationDetail.flightNumber && <p><strong>Flight:</strong> {locationDetail.flightNumber}</p>}
+                  <p><strong>ETA:</strong> {locationDetail.etaIso ? new Date(locationDetail.etaIso).toLocaleString() : "—"}</p>
+                  <p><strong>Last updated:</strong> {new Date(locationDetail.updatedAtIso).toLocaleString()}</p>
+                </div>
+
+                <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-500">
+                  Based on milestone tracking{locationDetail.liveBorderWait ? " and live border wait telemetry" : ""} — not GPS. This system doesn't have a live carrier-tracking integration (e.g. Project44, FourKites, or ELD access) yet, so this reflects the most recent known status rather than a real-time map position.
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

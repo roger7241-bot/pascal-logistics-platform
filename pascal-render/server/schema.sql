@@ -867,3 +867,24 @@ ALTER TABLE outbound_staging ADD COLUMN IF NOT EXISTS driver_name TEXT;
 ALTER TABLE outbound_staging ADD COLUMN IF NOT EXISTS trailer_seal_number TEXT;
 ALTER TABLE outbound_staging ADD COLUMN IF NOT EXISTS dock_door TEXT;
 ALTER TABLE outbound_staging ADD COLUMN IF NOT EXISTS handling_notes TEXT;
+
+-- Company profile basics that were genuinely missing from the base accounts
+-- table since its original creation — a real gap Roger caught: no address
+-- at all on the account record itself (distinct from operational facility
+-- addresses in the facilities table). Also adding website and industry,
+-- standard basics for any B2B account record.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS address_street TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS address_city TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS address_state_or_province TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS address_postal_code TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS address_country_code TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS website TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS industry TEXT;
+
+-- Shipping department contact — distinct from primary_contact (general
+-- business contact) and ap_contact (billing): the person Pascal's
+-- operators actually coordinate with day-to-day for pickups, appointments,
+-- and shipment-specific questions at the client's own warehouse/facility.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS shipping_contact_name TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS shipping_contact_email TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS shipping_contact_phone TEXT;

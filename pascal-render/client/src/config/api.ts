@@ -70,6 +70,8 @@ export const api = {
     request<TResult>(`/api/operator/dispatch/staging/${id}/send-gate-sms`, { method: "POST", body: payload ?? {} }),
   createMagicUploadLink: <TResult = unknown>(id: string) => request<TResult>(`/api/operator/dispatch/staging/${id}/magic-upload-link`, { method: "POST" }),
   clientShipments: <TResult = unknown>() => request<TResult>("/api/client/shipments"),
+  clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>
+    request<TResult>(`/api/client/shipments/search?query=${encodeURIComponent(query)}${type ? `&type=${type}` : ""}`),
   deleteClientShipment: <TResult = unknown>(id: string) => request<TResult>(`/api/client/shipments/${id}`, { method: "DELETE" }),
   clientShipmentDetail: <TResult = unknown>(id: string) => request<TResult>(`/api/client/shipments/${encodeURIComponent(id)}`),
   overridePaps: <TResult = unknown>(id: string) => request<TResult>(`/api/client/shipments/${encodeURIComponent(id)}/override-paps`, { method: "PATCH" }),
@@ -82,6 +84,9 @@ export const api = {
   ceoAlerts: <TResult = unknown>() => request<TResult>("/api/ceo/alerts"),
   ceoActivity: <TResult = unknown>() => request<TResult>("/api/ceo/activity"),
   ceoCorridorShipments: <TResult = unknown>() => request<TResult>("/api/ceo/corridor-shipments"),
+  ceoShipmentSnapshot: <TResult = unknown>() => request<TResult>("/api/ceo/shipment-snapshot"),
+  ceoAttentionQueue: <TResult = unknown>() => request<TResult>("/api/ceo/attention-queue"),
+  ceoShipmentLocation: <TResult = unknown>(id: string) => request<TResult>(`/api/ceo/shipments/${id}/location`),
   accounts: <TResult = unknown>() => request<TResult>("/api/operator/accounts"),
   createAccount: <TResult = unknown>(payload: unknown) => request<TResult>("/api/operator/accounts", { method: "POST", body: payload }),
   accountKpis: <TResult = unknown>() => request<TResult>("/api/operator/accounts/kpis"),

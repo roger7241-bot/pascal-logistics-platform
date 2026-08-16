@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Package, Clock, ShieldCheck, PiggyBank, Plus, Upload, Search, MessageCircle, Truck, TrainFront, Ship, Plane, Settings, Trash2 } from "lucide-react";
+import { Package, Clock, ShieldCheck, PiggyBank, Plus, Upload, Search, MessageCircle, Truck, TrainFront, Ship, Plane, Settings, Trash2, X, Copy, Check } from "lucide-react";
 import { AppHeader } from "../components/AppHeader";
 import { ShipmentDetailDrawer } from "../components/ShipmentDetailDrawer";
 import { ClientShipmentIntakeWizard } from "../components/ClientShipmentIntakeWizard";
@@ -12,6 +12,16 @@ import type { ClientShipmentSummary, StatusChip } from "../types/shipment";
 import type { RerouteAdvisory } from "../types/reroute";
 
 const MODE_ICON: Record<string, typeof Truck> = { road: Truck, rail: TrainFront, ocean: Ship, air: Plane };
+
+interface TrackSearchResult {
+  id: string;
+  clientOrg?: string;
+  lane: string;
+  carrierName?: string;
+  bolNumber?: string;
+  proNumber?: string;
+  statusChip: string;
+}
 
 const STATUS_CHIP_LABEL: Record<StatusChip, string> = {
   paps_pars_released: "PAPS/PARS Released",
@@ -55,6 +65,31 @@ export function ClientPortalPage() {
   const [shipments, setShipments] = useState<ClientShipmentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<ClientShipmentSummary | undefined>(undefined);
+  const [trackModalOpen, setTrackModalOpen] = useState(false);
+  const [trackQuery, setTrackQuery] = useState("");
+  const [trackType, setTrackType] = useState<"pro" | "bol" | "any">("pro"); // defaults to PRO# — trucking cross-border is the current focus; more modes (ocean B/L, air AWB) just add options here later
+  const [trackResults, setTrackResults] = useState<TrackSearchResult[]>([]);
+  const [trackSearching, setTrackSearching] = useState(false);
+  const [trackSearched, setTrackSearched] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | undefined>(undefined);
+
+  async function handleTrackSearch() {
+    if (!trackQuery.trim()) return;
+    setTrackSearching(true);
+    try {
+      const data = await api.clientShipmentSearch<{ results: TrackSearchResult[] }>(trackQuery.trim(), trackType === "any" ? undefined : trackType);
+      setTrackResults(data.results);
+      setTrackSearched(true);
+    } finally {
+      setTrackSearching(false);
+    }
+  }
+
+  function copyToClipboard(text: string, field: string) {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(undefined), 1500);
+  }
   const [wizardOpen, setWizardOpen] = useState(false);
   const [baselineOpen, setBaselineOpen] = useState(false);
   const [pendingAdvisories, setPendingAdvisories] = useState<RerouteAdvisory[]>([]);
@@ -117,7 +152,7 @@ export function ClientPortalPage() {
           <button className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
             <Upload size={15} /> Upload Document
           </button>
-          <button className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
+          <button onClick={() => setTrackModalOpen(true)} className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
             <Search size={15} /> Track by BOL/#
           </button>
           <button className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
@@ -170,6 +205,84 @@ export function ClientPortalPage() {
       {selected && <ShipmentDetailDrawer shipment={selected} onClose={() => setSelected(undefined)} />}
       {wizardOpen && <ClientShipmentIntakeWizard onClose={() => setWizardOpen(false)} />}
       {baselineOpen && <ClientOpsBaselineWizard onClose={() => setBaselineOpen(false)} />}
+
+      {trackModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => {
+            setTrackModalOpen(false);
+            setTrackQuery("");
+            setTrackResults([]);
+            setTrackSearched(false);
+          }}
+        >
+          <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-200 bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-bold">Track by BOL # or PRO #</p>
+              <button onClick={() => setTrackModalOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-slate-500">
+              Look up a shipment's BOL and PRO numbers — since we don't have carrier API access on file yet, use these to check status directly on the carrier's own website.
+            </p>
+            <div className="mb-2 flex gap-2">
+              <select
+                value={trackType}
+                onChange={(e) => setTrackType(e.target.value as "pro" | "bol" | "any")}
+                className="rounded-md border border-slate-300 px-2 py-2 text-sm text-slate-700"
+                title="Number type — more modes (ocean B/L, air AWB) will extend this list as we support them"
+              >
+                <option value="pro">PRO # (Trucking)</option>
+                <option value="bol">BOL #</option>
+                <option value="any">Any / All shipments</option>
+              </select>
+              <input
+                value={trackQuery}
+                onChange={(e) => setTrackQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleTrackSearch()}
+                placeholder={trackType === "pro" ? "Enter PRO #..." : trackType === "bol" ? "Enter BOL #..." : "Enter BOL # or PRO #..."}
+                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                autoFocus
+              />
+            </div>
+            <button onClick={handleTrackSearch} disabled={trackSearching || !trackQuery.trim()} className="w-full rounded-md bg-slate-900 py-2 text-sm font-semibold text-white disabled:opacity-40">
+              {trackSearching ? "Searching…" : "Search"}
+            </button>
+
+            <div className="mt-4 space-y-3">
+              {trackSearched && trackResults.length === 0 && <p className="py-6 text-center text-xs text-slate-400">No shipment found matching that number.</p>}
+              {trackResults.map((r) => (
+                <div key={r.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="font-mono text-sm font-semibold text-slate-900">
+                    {r.id} <span className="font-sans font-normal text-slate-400">· {r.clientOrg}</span>
+                  </p>
+                  <p className="mb-2 text-xs text-slate-500">
+                    {r.lane} {r.carrierName && `· ${r.carrierName}`}
+                  </p>
+                  {r.bolNumber && (
+                    <div className="mb-1.5 flex items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-1.5">
+                      <span className="text-xs text-slate-500">BOL #: <span className="font-mono font-semibold text-slate-800">{r.bolNumber}</span></span>
+                      <button onClick={() => copyToClipboard(r.bolNumber!, `bol-${r.id}`)} className="text-slate-400 hover:text-slate-700">
+                        {copiedField === `bol-${r.id}` ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                      </button>
+                    </div>
+                  )}
+                  {r.proNumber && (
+                    <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-1.5">
+                      <span className="text-xs text-slate-500">PRO #: <span className="font-mono font-semibold text-slate-800">{r.proNumber}</span></span>
+                      <button onClick={() => copyToClipboard(r.proNumber!, `pro-${r.id}`)} className="text-slate-400 hover:text-slate-700">
+                        {copiedField === `pro-${r.id}` ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <ChatbotWidget />
     </div>
   );

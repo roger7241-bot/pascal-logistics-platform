@@ -36,6 +36,18 @@ export interface ExtendedShipment extends ClientShipmentSummary {
   commercialInvoiceValueUsd?: number;
   reeferSetpointF?: number;
   aiRationale?: string;
+  /** Relative to Canada, matching Pascal's BC/WA corridor base — genuinely
+   * set per shipment below, not inferred at runtime from the free-text
+   * lane string (which would be a fragile heuristic). A real future
+   * booking-driven pipeline would set this from the shipper/consignee
+   * country codes captured at intake time. */
+  direction?: "inbound" | "outbound";
+  /** For manually looking a shipment up on the carrier's own tracking
+   * page — no carrier accounts/API relationships exist yet (per Roger),
+   * so this is what an agent actually needs to go plug into the
+   * carrier's website themselves. */
+  bolNumber?: string;
+  proNumber?: string;
 }
 
 export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
@@ -45,6 +57,9 @@ export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
     currentMilestone: "poe_inspection",
     statusChip: "customs_hold_flagged",
     lane: "Surrey, BC -> Blaine, WA",
+    direction: "outbound",
+    bolNumber: "BOL-88014471",
+    proNumber: "0774125869",
     updatedAtIso: new Date(Date.now() - 12 * 60_000).toISOString(),
     driverName: "Mike Tran",
     driverPhone: "+16045551234",
@@ -68,6 +83,9 @@ export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
     currentMilestone: "paps_pars_release",
     statusChip: "paps_pars_released",
     lane: "Abbotsford, BC -> Everett, WA",
+    direction: "outbound",
+    bolNumber: "BOL-07740219",
+    proNumber: "5521098734",
     updatedAtIso: new Date(Date.now() - 2 * 3_600_000).toISOString(),
     driverName: "Sarah Kim",
     driverPhone: "+14255559876",
@@ -85,6 +103,9 @@ export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
     currentMilestone: "export_manifest",
     statusChip: "in_transit",
     lane: "Langley, BC -> Lynden, WA",
+    direction: "outbound",
+    bolNumber: "BOL-44025587",
+    proNumber: "3390871245",
     updatedAtIso: new Date(Date.now() - 25 * 60_000).toISOString(),
     driverName: "Devon Clarke",
     driverPhone: "+16045557788",
@@ -103,6 +124,8 @@ export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
     currentMilestone: "vessel_departure",
     statusChip: "vessel_en_route",
     lane: "Shanghai -> Vancouver",
+    direction: "inbound",
+    bolNumber: "MSCUBN4471902",
     updatedAtIso: new Date(Date.now() - 6 * 3_600_000).toISOString(),
     vesselName: "MSC Aurora",
     equipmentType: "FCL 40ft HC",
@@ -119,6 +142,8 @@ export const SAMPLE_SHIPMENTS: ExtendedShipment[] = [
     currentMilestone: "flight_departure",
     statusChip: "flight_departed",
     lane: "YVR -> LHR",
+    direction: "outbound",
+    bolNumber: "014-88750219",
     updatedAtIso: new Date(Date.now() - 45 * 60_000).toISOString(),
     flightNumber: "AC854",
     equipmentType: "Standard Air",
@@ -139,6 +164,39 @@ function findShipment(id: string) {
 
 export function createClientRouter(wsManager: WsManager, telemetryService: BorderTelemetryService): Router {
   const router = Router();
+
+  // Track by BOL# or PRO# — no carrier accounts/API relationships exist
+  // yet, so this is what an agent actually needs on hand to go plug into
+  // the carrier's own website manually. Matches either field, partial and
+  // case-insensitive so an agent doesn't need the exact "BOL-" prefix.
+  // `type` scopes the search to a specific number field — "pro" | "bol" |
+  // omitted (searches both). Structured as a discrete field-type param
+  // rather than a single free-text search so adding more number types
+  // later (ocean B/L is currently stored in the same bolNumber field, but
+  // a real air AWB or container # would just be another case here) is a
+  // dropdown addition, not a schema rework.
+  router.get("/shipments/search", (req: Request, res: Response) => {
+    const query = typeof req.query.query === "string" ? req.query.query.trim().toLowerCase() : "";
+    const type = typeof req.query.type === "string" ? req.query.type : undefined;
+    if (!query) return res.status(200).json({ results: [] });
+
+    const results = SAMPLE_SHIPMENTS.filter((s) => {
+      const bolMatch = s.bolNumber?.toLowerCase().includes(query);
+      const proMatch = s.proNumber?.toLowerCase().includes(query);
+      if (type === "bol") return Boolean(bolMatch);
+      if (type === "pro") return Boolean(proMatch);
+      return Boolean(bolMatch || proMatch);
+    }).map((s) => ({
+      id: s.id,
+      clientOrg: s.clientOrg,
+      lane: s.lane,
+      carrierName: s.carrierName,
+      bolNumber: s.bolNumber,
+      proNumber: s.proNumber,
+      statusChip: s.statusChip,
+    }));
+    return res.status(200).json({ results });
+  });
 
   router.get("/shipments", (_req: Request, res: Response) => {
     const snapshot = telemetryService.getSnapshot();
