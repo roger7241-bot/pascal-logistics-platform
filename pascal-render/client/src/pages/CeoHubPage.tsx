@@ -146,7 +146,7 @@ export function CeoHubPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Gauge size={18} className="text-slate-500" />
-            <h1 className="text-xl font-bold">CEO Real-Time Status Panel</h1>
+            <h1 className="text-xl font-bold">Manager Real-Time Status Panel</h1>
           </div>
           {totalAlerts > 0 && (
             <div className="flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5">

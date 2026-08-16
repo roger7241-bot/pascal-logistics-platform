@@ -3,7 +3,7 @@ import { Compass } from "lucide-react";
 import { SimulationButton } from "./SimulationButton";
 
 const NAV_ITEMS = [
-  { to: "/", label: "CEO Hub" },
+  { to: "/", label: "Manager Hub" },
   { to: "/client-portal", label: "Client Portal" },
   { to: "/client-portal/compliance", label: "Compliance Vault" },
   { to: "/client-portal/calendar", label: "Calendar" },

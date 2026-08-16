@@ -84,6 +84,19 @@ const TAB_LABEL: Record<(typeof DETAIL_TABS)[number], string> = {
   carriers: "Assigned Carrier Accounts",
 };
 
+/** org_id + a short random suffix so two clients with the same/similar
+ * name (e.g. two different "Acme Inc") never collide against the real
+ * PRIMARY KEY constraint on accounts.org_id. */
+function generateOrgId(companyName: string): string {
+  const slug = companyName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 24);
+  const suffix = Math.random().toString(36).slice(2, 6);
+  return slug ? `org_${slug}_${suffix}` : `org_${suffix}`;
+}
+
 export function CrmAccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [kpis, setKpis] = useState<Kpis | undefined>(undefined);
@@ -94,6 +107,7 @@ export function CrmAccountsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
 
   const [orgId, setOrgId] = useState("");
+  const [orgIdManuallyEdited, setOrgIdManuallyEdited] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [primaryContactName, setPrimaryContactName] = useState("");
   const [primaryContactEmail, setPrimaryContactEmail] = useState("");
@@ -183,6 +197,7 @@ export function CrmAccountsPage() {
         ...taxField,
       });
       setOrgId("");
+      setOrgIdManuallyEdited(false);
       setCompanyName("");
       setPrimaryContactName("");
       setPrimaryContactEmail("");
@@ -484,8 +499,42 @@ export function CrmAccountsPage() {
               <div>
                 <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Company</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Company legal name" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                  <input value={orgId} onChange={(e) => setOrgId(e.target.value)} placeholder="org_id (e.g. org_newclient)" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input
+                    value={companyName}
+                    onChange={(e) => {
+                      setCompanyName(e.target.value);
+                      if (!orgIdManuallyEdited) setOrgId(generateOrgId(e.target.value));
+                    }}
+                    placeholder="Company legal name"
+                    className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  <div className="col-span-2">
+                    <label className="mb-1 block text-[11px] text-slate-500">Client ID (auto-generated — editable if needed)</label>
+                    <div className="flex gap-1">
+                      <input
+                        value={orgId}
+                        onChange={(e) => {
+                          setOrgId(e.target.value);
+                          setOrgIdManuallyEdited(true);
+                        }}
+                        placeholder="Type a company name above to generate one"
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+                      />
+                      {orgIdManuallyEdited && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOrgId(generateOrgId(companyName));
+                            setOrgIdManuallyEdited(false);
+                          }}
+                          title="Regenerate automatically"
+                          className="shrink-0 rounded-md border border-slate-300 px-3 text-xs text-slate-500 hover:bg-slate-50"
+                        >
+                          Auto
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <input value={primaryContactName} onChange={(e) => setPrimaryContactName(e.target.value)} placeholder="Primary contact name" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
                   <input value={primaryContactEmail} onChange={(e) => setPrimaryContactEmail(e.target.value)} placeholder="Email" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
                   <input value={primaryContactPhone} onChange={(e) => setPrimaryContactPhone(e.target.value)} placeholder="Phone" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />

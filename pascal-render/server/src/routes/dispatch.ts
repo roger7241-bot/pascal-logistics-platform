@@ -50,6 +50,10 @@ function rowToStaging(row: Record<string, unknown>): OutboundStagingRecord {
     papsParsBarcode: (row.paps_pars_barcode as string) ?? undefined,
     status: row.status as OutboundStagingRecord["status"],
     driverPhone: (row.driver_phone as string) ?? undefined,
+    driverName: (row.driver_name as string) ?? undefined,
+    trailerSealNumber: (row.trailer_seal_number as string) ?? undefined,
+    dockDoor: (row.dock_door as string) ?? undefined,
+    handlingNotes: (row.handling_notes as string) ?? undefined,
     stagedBy: (row.staged_by as string) ?? undefined,
     stagedAtIso: new Date(row.staged_at as string).toISOString(),
     dispatchedAtIso: row.dispatched_at ? new Date(row.dispatched_at as string).toISOString() : undefined,
@@ -153,8 +157,8 @@ export function createDispatchRouter(): Router {
       return res.status(400).json({ error: `packagingType (${VALID_PACKAGING.join(", ")}) and grossWeightLbs are required.` });
     }
     const result = await pool.query(
-      `INSERT INTO outbound_staging (org_id, po_number, bol_number, sku, consignee_facility_id, carrier_account_id, packaging_type, pallet_count, gross_weight_lbs, freight_class, is_cross_border, paps_pars_barcode, driver_phone, staged_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      `INSERT INTO outbound_staging (org_id, po_number, bol_number, sku, consignee_facility_id, carrier_account_id, packaging_type, pallet_count, gross_weight_lbs, freight_class, is_cross_border, paps_pars_barcode, driver_phone, driver_name, trailer_seal_number, dock_door, handling_notes, staged_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [
         body.orgId ?? "org_meridian",
         body.poNumber ?? null,
@@ -169,6 +173,10 @@ export function createDispatchRouter(): Router {
         body.isCrossBorder ?? false,
         body.papsParsBarcode ?? null,
         body.driverPhone ?? null,
+        body.driverName ?? null,
+        body.trailerSealNumber ?? null,
+        body.dockDoor ?? null,
+        body.handlingNotes ?? null,
         body.stagedBy ?? null,
       ],
     );

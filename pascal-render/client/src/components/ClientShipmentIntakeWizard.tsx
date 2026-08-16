@@ -18,7 +18,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { api } from "../config/api";
-import { calculateFreightClass, cmToIn, kgToLbs } from "../lib/freightClass";
+import { calculateFreightClass, cmToIn, inToCm, kgToLbs, lbsToKg } from "../lib/freightClass";
+import { AddressAutocompleteInput, type AddressSuggestion } from "./AddressAutocompleteInput";
 
 interface SavedFacility {
   id: string;
@@ -155,6 +156,78 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
   const updateHandlingUnit = (i: number, field: keyof HandlingUnitForm, value: string) =>
     setHandlingUnits((prev) => prev.map((u, idx) => (idx === i ? { ...u, [field]: value } : u)));
 
+  const [unitsManuallySet, setUnitsManuallySet] = useState(false);
+
+  /** Core conversion logic — shared by the explicit toggle click handlers
+   * AND the automatic country-based default below, so both paths convert
+   * consistently. Kept separate from the "manually set" flag so the
+   * automatic default doesn't get mistaken for a deliberate user choice. */
+  function applyDimensionUnit(newUnit: "in" | "cm") {
+    if (newUnit === dimensionUnit) return;
+    setHandlingUnits((prev) =>
+      prev.map((u) => ({
+        ...u,
+        lengthIn: u.lengthIn ? String(newUnit === "cm" ? inToCm(Number(u.lengthIn)) : cmToIn(Number(u.lengthIn))) : u.lengthIn,
+        widthIn: u.widthIn ? String(newUnit === "cm" ? inToCm(Number(u.widthIn)) : cmToIn(Number(u.widthIn))) : u.widthIn,
+        heightIn: u.heightIn ? String(newUnit === "cm" ? inToCm(Number(u.heightIn)) : cmToIn(Number(u.heightIn))) : u.heightIn,
+      })),
+    );
+    setDimensionUnit(newUnit);
+
+    const pairedWeightUnit = newUnit === "cm" ? "kg" : "lbs";
+    if (pairedWeightUnit !== weightUnit) {
+      const rawWeight = Number(totalWeightLbs);
+      if (rawWeight > 0) setTotalWeightLbs(String(pairedWeightUnit === "kg" ? lbsToKg(rawWeight) : kgToLbs(rawWeight)));
+      setWeightUnit(pairedWeightUnit);
+    }
+  }
+
+  function applyWeightUnit(newUnit: "lbs" | "kg") {
+    if (newUnit === weightUnit) return;
+    const rawWeight = Number(totalWeightLbs);
+    if (rawWeight > 0) setTotalWeightLbs(String(newUnit === "kg" ? lbsToKg(rawWeight) : kgToLbs(rawWeight)));
+    setWeightUnit(newUnit);
+
+    const pairedDimensionUnit = newUnit === "kg" ? "cm" : "in";
+    if (pairedDimensionUnit !== dimensionUnit) {
+      setHandlingUnits((prev) =>
+        prev.map((u) => ({
+          ...u,
+          lengthIn: u.lengthIn ? String(pairedDimensionUnit === "cm" ? inToCm(Number(u.lengthIn)) : cmToIn(Number(u.lengthIn))) : u.lengthIn,
+          widthIn: u.widthIn ? String(pairedDimensionUnit === "cm" ? inToCm(Number(u.widthIn)) : cmToIn(Number(u.widthIn))) : u.widthIn,
+          heightIn: u.heightIn ? String(pairedDimensionUnit === "cm" ? inToCm(Number(u.heightIn)) : cmToIn(Number(u.heightIn))) : u.heightIn,
+        })),
+      );
+      setDimensionUnit(pairedDimensionUnit);
+    }
+  }
+
+  /** Explicit user toggle clicks go through these — they mark units as
+   * manually set, which permanently stops the automatic country-based
+   * default below from overriding the shipper's deliberate choice. */
+  function handleDimensionUnitChange(newUnit: "in" | "cm") {
+    applyDimensionUnit(newUnit);
+    setUnitsManuallySet(true);
+  }
+
+  function handleWeightUnitChange(newUnit: "lbs" | "kg") {
+    applyWeightUnit(newUnit);
+    setUnitsManuallySet(true);
+  }
+
+  /** Defaults to the shipper's own country's standard system — metric for
+   * Canada, imperial for the US — the moment their country is known from
+   * Step 1, whether from a saved facility or manual entry. Never fires
+   * again once the shipper has manually touched a unit toggle themselves. */
+  useEffect(() => {
+    if (unitsManuallySet) return;
+    const resolvedCountry = shipperManualEntry ? shipperCountryCode : shipperFacility?.countryCode;
+    if (resolvedCountry === "CA") applyDimensionUnit("cm");
+    else if (resolvedCountry === "US") applyDimensionUnit("in");
+    // MX / other: no clear single default, leave as-is (in/lbs) until the shipper picks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shipperManualEntry, shipperCountryCode, shipperFacility?.countryCode, unitsManuallySet]);
+
   const [documentText, setDocumentText] = useState("");
   const [parseError, setParseError] = useState<string | undefined>(undefined);
 
@@ -211,21 +284,25 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
       ? Boolean(
           handlingUnits.some((u) => u.quantity) &&
             totalWeightLbs &&
-            invoiceValue &&
+            Number(invoiceValue) > 0 &&
             htsCode &&
             countryOfOrigin &&
+            (!isHazmat || (unNumber.trim() && hazardClass.trim())) &&
+            (!reeferEnabled || reeferTempF.trim()) &&
             (!pickupAppointmentRequired ||
               ((shipperContactName || shipperFacility?.dockContactName) &&
                 (shipperContactPhone || shipperFacility?.dockContactPhone || shipperFacility?.contactPhoneE164) &&
-                (shipperContactEmail || shipperFacility?.receivingEmail))),
+                (shipperContactEmail || shipperFacility?.receivingEmail))) &&
+            (!pickupDate || !deliveryDate || deliveryDate >= pickupDate),
         )
       : step === 4
       ? Boolean(
-          !strictAppointment ||
-            billingOption === "carrier_account" ||
-            ((consigneeContactName || consigneeFacility?.dockContactName) &&
-              (consigneeContactPhone || consigneeFacility?.dockContactPhone || consigneeFacility?.contactPhoneE164) &&
-              (consigneeContactEmail || consigneeFacility?.receivingEmail)),
+          customsBrokerName.trim() &&
+            (!strictAppointment ||
+              billingOption === "carrier_account" ||
+              ((consigneeContactName || consigneeFacility?.dockContactName) &&
+                (consigneeContactPhone || consigneeFacility?.dockContactPhone || consigneeFacility?.contactPhoneE164) &&
+                (consigneeContactEmail || consigneeFacility?.receivingEmail))),
         )
       : true;
 
@@ -400,7 +477,18 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   {shipperManualEntry ? (
                     <div className="space-y-2 rounded-md border border-slate-400 bg-white p-3">
                       <input value={shipperName} onChange={(e) => setShipperName(e.target.value)} placeholder="Company / facility name" className="w-full rounded-md border border-slate-400 px-3 py-2 text-sm" />
-                      <input value={shipperStreet} onChange={(e) => setShipperStreet(e.target.value)} placeholder="Street address" className="w-full rounded-md border border-slate-400 px-3 py-2 text-sm" />
+                      <AddressAutocompleteInput
+                        value={shipperStreet}
+                        onChange={setShipperStreet}
+                        placeholder="Street address"
+                        onSelect={(s: AddressSuggestion) => {
+                          setShipperStreet(s.streetNumber && s.streetName ? `${s.streetNumber} ${s.streetName}` : s.freeformAddress);
+                          if (s.municipality) setShipperCity(s.municipality);
+                          if (s.countrySubdivisionCode) setShipperStateOrProvince(s.countrySubdivisionCode);
+                          if (s.postalCode) setShipperPostalCode(s.postalCode);
+                          if (s.countryCode) setShipperCountryCode(s.countryCode);
+                        }}
+                      />
                       <div className="grid grid-cols-2 gap-2">
                         <input value={shipperCity} onChange={(e) => setShipperCity(e.target.value)} placeholder="City" className="rounded-md border border-slate-400 px-3 py-2 text-sm" />
                         <input value={shipperStateOrProvince} onChange={(e) => setShipperStateOrProvince(e.target.value)} placeholder="State / Province" className="rounded-md border border-slate-400 px-3 py-2 text-sm" />
@@ -463,7 +551,18 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   {consigneeManualEntry ? (
                     <div className="space-y-2 rounded-md border border-slate-400 bg-white p-3">
                       <input value={consigneeName} onChange={(e) => setConsigneeName(e.target.value)} placeholder="Company / facility name" className="w-full rounded-md border border-slate-400 px-3 py-2 text-sm" />
-                      <input value={consigneeStreet} onChange={(e) => setConsigneeStreet(e.target.value)} placeholder="Street address" className="w-full rounded-md border border-slate-400 px-3 py-2 text-sm" />
+                      <AddressAutocompleteInput
+                        value={consigneeStreet}
+                        onChange={setConsigneeStreet}
+                        placeholder="Street address"
+                        onSelect={(s: AddressSuggestion) => {
+                          setConsigneeStreet(s.streetNumber && s.streetName ? `${s.streetNumber} ${s.streetName}` : s.freeformAddress);
+                          if (s.municipality) setConsigneeCity(s.municipality);
+                          if (s.countrySubdivisionCode) setConsigneeStateOrProvince(s.countrySubdivisionCode);
+                          if (s.postalCode) setConsigneePostalCode(s.postalCode);
+                          if (s.countryCode) setConsigneeCountryCode(s.countryCode);
+                        }}
+                      />
                       <div className="grid grid-cols-2 gap-2">
                         <input value={consigneeCity} onChange={(e) => setConsigneeCity(e.target.value)} placeholder="City" className="rounded-md border border-slate-400 px-3 py-2 text-sm" />
                         <input value={consigneeStateOrProvince} onChange={(e) => setConsigneeStateOrProvince(e.target.value)} placeholder="State / Province" className="rounded-md border border-slate-400 px-3 py-2 text-sm" />
@@ -579,8 +678,8 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   <p className="text-xs font-mono uppercase tracking-wide text-slate-500">Handling units</p>
                   <div className="flex items-center gap-3">
                     <span className="flex rounded-md border border-slate-400 text-[10px] font-semibold">
-                      <button type="button" onClick={() => setDimensionUnit("in")} className={`px-2 py-1 ${dimensionUnit === "in" ? "bg-slate-900 text-white" : "text-slate-500"}`}>in</button>
-                      <button type="button" onClick={() => setDimensionUnit("cm")} className={`px-2 py-1 ${dimensionUnit === "cm" ? "bg-slate-900 text-white" : "text-slate-500"}`}>cm</button>
+                      <button type="button" onClick={() => handleDimensionUnitChange("in")} className={`px-2 py-1 ${dimensionUnit === "in" ? "bg-slate-900 text-white" : "text-slate-500"}`}>in</button>
+                      <button type="button" onClick={() => handleDimensionUnitChange("cm")} className={`px-2 py-1 ${dimensionUnit === "cm" ? "bg-slate-900 text-white" : "text-slate-500"}`}>cm</button>
                     </span>
                     <button onClick={addHandlingUnit} className="flex items-center gap-1 text-xs font-semibold text-cyan-600 hover:text-cyan-700">
                       <Plus size={12} /> Add
@@ -616,8 +715,8 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   <label className="mb-1 flex items-center justify-between text-xs font-mono uppercase tracking-wide text-slate-500">
                     Total gross weight
                     <span className="flex rounded border border-slate-400 text-[10px] font-semibold normal-case">
-                      <button type="button" onClick={() => setWeightUnit("lbs")} className={`px-1.5 py-0.5 ${weightUnit === "lbs" ? "bg-slate-900 text-white" : "text-slate-500"}`}>lbs</button>
-                      <button type="button" onClick={() => setWeightUnit("kg")} className={`px-1.5 py-0.5 ${weightUnit === "kg" ? "bg-slate-900 text-white" : "text-slate-500"}`}>kg</button>
+                      <button type="button" onClick={() => handleWeightUnitChange("lbs")} className={`px-1.5 py-0.5 ${weightUnit === "lbs" ? "bg-slate-900 text-white" : "text-slate-500"}`}>lbs</button>
+                      <button type="button" onClick={() => handleWeightUnitChange("kg")} className={`px-1.5 py-0.5 ${weightUnit === "kg" ? "bg-slate-900 text-white" : "text-slate-500"}`}>kg</button>
                     </span>
                   </label>
                   <input value={totalWeightLbs} onChange={(e) => setTotalWeightLbs(e.target.value)} placeholder="8000" className="w-full rounded-md border border-slate-400 px-3 py-2 text-sm" />
@@ -629,7 +728,7 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   </label>
                   {reeferEnabled && (
                     <>
-                      <input value={reeferTempF} onChange={(e) => setReeferTempF(e.target.value)} placeholder={`°${reeferTempUnit}`} className="w-16 rounded-md border border-slate-400 px-2 py-2 text-sm" />
+                      <input value={reeferTempF} onChange={(e) => setReeferTempF(e.target.value)} placeholder={`°${reeferTempUnit} (required)`} className={`w-24 rounded-md border px-2 py-2 text-sm ${reeferTempF.trim() ? "border-slate-400" : "border-amber-500 bg-amber-50"}`} />
                       <select value={reeferTempUnit} onChange={(e) => setReeferTempUnit(e.target.value as "F" | "C")} className="rounded-md border border-slate-400 px-1 py-2 text-xs">
                         <option>F</option>
                         <option>C</option>
@@ -736,8 +835,8 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                 </div>
                 {isHazmat && (
                   <div className="mt-3 grid grid-cols-3 gap-3 border-t border-slate-200 pt-3">
-                    <input value={unNumber} onChange={(e) => setUnNumber(e.target.value)} placeholder="UN Number" className="rounded-md border border-slate-400 px-3 py-2 text-sm" />
-                    <input value={hazardClass} onChange={(e) => setHazardClass(e.target.value)} placeholder="Hazard Class (1-9)" className="rounded-md border border-slate-400 px-3 py-2 text-sm" />
+                    <input value={unNumber} onChange={(e) => setUnNumber(e.target.value)} placeholder="UN Number (required)" className={`rounded-md border px-3 py-2 text-sm ${unNumber.trim() ? "border-slate-400" : "border-amber-500 bg-amber-50"}`} />
+                    <input value={hazardClass} onChange={(e) => setHazardClass(e.target.value)} placeholder="Hazard Class 1-9 (required)" className={`rounded-md border px-3 py-2 text-sm ${hazardClass.trim() ? "border-slate-400" : "border-amber-500 bg-amber-50"}`} />
                     <select value={packingGroup} onChange={(e) => setPackingGroup(e.target.value as typeof packingGroup)} className="rounded-md border border-slate-400 px-3 py-2 text-sm">
                       <option value="I">Packing Group I</option>
                       <option value="II">Packing Group II</option>
@@ -988,7 +1087,7 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   <ReviewRow label="Name" value={shipperManualEntry ? shipperName : shipperFacility?.name ?? shipperName} />
                   <ReviewRow
                     label="Address"
-                    value={shipperManualEntry ? [shipperStreet, shipperCity, shipperStateOrProvince, COUNTRY_LABEL[shipperCountryCode] ?? shipperCountryCode].filter(Boolean).join(", ") : shipperFacility ? `${shipperFacility.street}, ${shipperFacility.city}, ${shipperFacility.stateOrProvince}` : "—"}
+                    value={shipperManualEntry ? [shipperStreet, shipperCity, shipperStateOrProvince, shipperPostalCode, COUNTRY_LABEL[shipperCountryCode] ?? shipperCountryCode].filter(Boolean).join(", ") : shipperFacility ? `${shipperFacility.street}, ${shipperFacility.city}, ${shipperFacility.stateOrProvince} ${shipperFacility.postalCode ?? ""}`.trim() : "—"}
                   />
                   <ReviewRow label="Contact" value={shipperContactName || shipperFacility?.dockContactName || "—"} />
                   <ReviewRow label="Phone" value={shipperContactPhone || shipperFacility?.dockContactPhone || shipperFacility?.contactPhoneE164 || "—"} />
@@ -998,7 +1097,7 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
                   <ReviewRow label="Name" value={consigneeManualEntry ? consigneeName : consigneeFacility?.name ?? consigneeName} />
                   <ReviewRow
                     label="Address"
-                    value={consigneeManualEntry ? [consigneeStreet, consigneeCity, consigneeStateOrProvince, COUNTRY_LABEL[consigneeCountryCode] ?? consigneeCountryCode].filter(Boolean).join(", ") : consigneeFacility ? `${consigneeFacility.street}, ${consigneeFacility.city}, ${consigneeFacility.stateOrProvince}` : "—"}
+                    value={consigneeManualEntry ? [consigneeStreet, consigneeCity, consigneeStateOrProvince, consigneePostalCode, COUNTRY_LABEL[consigneeCountryCode] ?? consigneeCountryCode].filter(Boolean).join(", ") : consigneeFacility ? `${consigneeFacility.street}, ${consigneeFacility.city}, ${consigneeFacility.stateOrProvince} ${consigneeFacility.postalCode ?? ""}`.trim() : "—"}
                   />
                   <ReviewRow label="Contact" value={consigneeContactName || consigneeFacility?.dockContactName || "—"} />
                   <ReviewRow label="Phone" value={consigneeContactPhone || consigneeFacility?.dockContactPhone || consigneeFacility?.contactPhoneE164 || "—"} />
@@ -1009,6 +1108,7 @@ export function ClientShipmentIntakeWizard({ onClose }: ClientShipmentIntakeWiza
               <ReviewSection title="Cargo">
                 {poNumber && <ReviewRow label="PO / Order #" value={poNumber} />}
                 <ReviewRow label="Handling units" value={handlingUnits.filter((u) => u.quantity).map((u) => `${u.quantity}× ${u.packagingType}${u.lengthIn && u.widthIn && u.heightIn ? ` (${u.lengthIn}×${u.widthIn}×${u.heightIn}${dimensionUnit})` : ""}`).join(", ") || "—"} />
+                {totalCartons && <ReviewRow label="Total cartons" value={totalCartons} />}
                 <ReviewRow label="Gross weight" value={totalWeightLbs ? `${totalWeightLbs} ${weightUnit}` : "—"} />
                 {freightClass && <ReviewRow label="Freight class" value={freightClass} />}
                 {mode === "road" && <ReviewRow label="Equipment" value={`${EQUIPMENT_LABEL[equipmentType]}${tailgateRequired ? " · Tailgate required" : ""}`} />}

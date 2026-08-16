@@ -132,6 +132,10 @@ export function RapidDispatchDesk() {
   const [isCrossBorder, setIsCrossBorder] = useState(false);
   const [papsParsBarcode, setPapsParsBarcode] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
+  const [driverName, setDriverName] = useState("");
+  const [trailerSealNumber, setTrailerSealNumber] = useState("");
+  const [dockDoor, setDockDoor] = useState("");
+  const [handlingNotes, setHandlingNotes] = useState("");
   const [weightBaseline, setWeightBaseline] = useState<{ avgGrossWeightLbs: number; sampleSize: number } | undefined>();
   const [submitting, setSubmitting] = useState(false);
   const [flashField, setFlashField] = useState<ScanTarget | undefined>();
@@ -270,6 +274,10 @@ export function RapidDispatchDesk() {
         isCrossBorder,
         papsParsBarcode: papsParsBarcode || undefined,
         driverPhone: driverPhone || undefined,
+        driverName: driverName || undefined,
+        trailerSealNumber: trailerSealNumber || undefined,
+        dockDoor: dockDoor || undefined,
+        handlingNotes: handlingNotes || undefined,
         stagedBy: "Warehouse Clerk",
       });
       // reset for next entry — keyboard-first flow means clerks stage
@@ -524,10 +532,33 @@ export function RapidDispatchDesk() {
                   </select>
                 </label>
                 <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">Driver Name</span>
+                  <input value={driverName} onChange={(e) => setDriverName(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400" />
+                </label>
+                <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-500">Driver Phone (for gate SMS)</span>
                   <input value={driverPhone} onChange={(e) => setDriverPhone(e.target.value)} placeholder="+16045551234" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400" />
                 </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">Trailer / Seal #</span>
+                  <input value={trailerSealNumber} onChange={(e) => setTrailerSealNumber(e.target.value)} placeholder="e.g. TRLR4471 / SEAL00219" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">Dock Door</span>
+                  <input value={dockDoor} onChange={(e) => setDockDoor(e.target.value)} placeholder="e.g. Door 7" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400" />
+                </label>
               </div>
+
+              <label className="mt-3 block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">Handling Notes (optional)</span>
+                <textarea
+                  value={handlingNotes}
+                  onChange={(e) => setHandlingNotes(e.target.value)}
+                  placeholder="Anything unusual at dispatch — damage, delay, special instructions..."
+                  rows={2}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                />
+              </label>
 
               <button
                 onClick={handleStage}
@@ -570,7 +601,13 @@ export function RapidDispatchDesk() {
               <div key={s.id} className="flex items-center gap-4 px-5 py-3.5">
                 <div className="w-32 shrink-0">
                   <p className="font-mono text-xs font-bold text-slate-900">{s.bolNumber ?? s.poNumber ?? s.id.slice(0, 8)}</p>
-                  <p className="text-xs text-slate-400">{PACKAGING_LABEL[s.packagingType]}</p>
+                  <p className="text-xs text-slate-400">
+                    {PACKAGING_LABEL[s.packagingType]}
+                    {s.driverName ? ` · ${s.driverName}` : ""}
+                    {s.trailerSealNumber ? ` · ${s.trailerSealNumber}` : ""}
+                    {s.dockDoor ? ` · ${s.dockDoor}` : ""}
+                  </p>
+                  {s.handlingNotes && <p className="mt-0.5 text-xs italic text-amber-600">⚠ {s.handlingNotes}</p>}
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-slate-900">{s.consigneeName ?? "—"}</p>

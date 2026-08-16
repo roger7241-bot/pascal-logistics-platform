@@ -120,7 +120,7 @@ export async function runEndToEndSimulation(wsManager: WsManager): Promise<Simul
     stepNumber: 4,
     title: "Pipeline confidence engine",
     status: "complete",
-    detail: `Confidence score: ${pipelineResult.confidenceScore.toFixed(2)} — ${pipelineResult.confidenceScore < 0.9 ? "below the 0.90 auto-dispatch threshold. Overriding Agent 6, routing to Agent 9." : "above threshold, auto-dispatching."}`,
+    detail: `Confidence score: ${pipelineResult.confidenceScore.toFixed(2)} — ${pipelineResult.confidenceScore < 0.9 ? "below the 0.90 auto-dispatch threshold, routed to manual review." : "above threshold, auto-dispatching."}`,
     data: { confidenceScore: pipelineResult.confidenceScore, approvalStatus: pipelineResult.approvalStatus, validationErrors: pipelineResult.validationErrors },
     timestampIso: now(),
   });

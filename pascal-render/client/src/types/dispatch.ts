@@ -66,6 +66,10 @@ export interface OutboundStagingRecord {
   papsParsBarcode?: string;
   status: StagingStatus;
   driverPhone?: string;
+  driverName?: string;
+  trailerSealNumber?: string;
+  dockDoor?: string;
+  handlingNotes?: string;
   stagedBy?: string;
   stagedAtIso: string;
   dispatchedAtIso?: string;

@@ -9,6 +9,7 @@
 import { Router, type Request, type Response } from "express";
 import { pool } from "../db/pool.js";
 import type { AlertPreference, CommodityProfile, FacilityProfile } from "../types/facility.js";
+import { searchAddresses } from "../services/addressAutocomplete.js";
 
 const DEMO_ORG_ID = "org_meridian"; // stand-in for the authenticated session's orgId
 
@@ -84,6 +85,15 @@ export function createFacilitiesRouter(): Router {
   router.get("/facilities", async (_req: Request, res: Response) => {
     const result = await pool.query("SELECT * FROM facilities WHERE org_id = $1 ORDER BY created_at DESC", [DEMO_ORG_ID]);
     res.status(200).json({ facilities: result.rows.map(rowToFacility) });
+  });
+
+  // Address autocomplete for the Book a Shipment wizard's manual-entry
+  // fields (used when a shipper/consignee isn't a saved facility).
+  router.get("/address-autocomplete", async (req: Request, res: Response) => {
+    const query = typeof req.query.query === "string" ? req.query.query : "";
+    const countrySet = typeof req.query.countrySet === "string" ? req.query.countrySet : undefined;
+    const result = await searchAddresses(query, countrySet);
+    res.status(200).json(result);
   });
 
   router.post("/facilities", async (req: Request, res: Response) => {

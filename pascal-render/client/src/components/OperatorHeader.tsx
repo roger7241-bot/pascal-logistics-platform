@@ -17,8 +17,8 @@ import {
 } from "lucide-react";
 
 const OPERATOR_DESKS = [
-  { to: "/operator", label: "CEO Hub", icon: Gauge },
-  { to: "/operator/operations", label: "Operations Queue", icon: Inbox },
+  { to: "/operator", label: "Manager Hub", icon: Gauge },
+  { to: "/operator/operations", label: "Operations Manager", icon: Inbox },
   { to: "/operator/carriers", label: "Carrier Desk", icon: Truck },
   { to: "/operator/billing", label: "Billing & Admin", icon: Receipt },
   { to: "/operator/executive-review", label: "Executive Review", icon: ShieldCheck },

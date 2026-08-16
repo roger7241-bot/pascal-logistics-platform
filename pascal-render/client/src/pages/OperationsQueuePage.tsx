@@ -197,8 +197,7 @@ export function OperationsQueuePage() {
       <main className="mx-auto max-w-[1400px] space-y-3 p-6">
         <div className="flex items-center gap-2">
           <Inbox size={18} className="text-slate-500" />
-          <h1 className="text-xl font-bold">Operations Queue</h1>
-          <span className="ml-2 rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-semibold text-slate-600">Agent 6 Desk</span>
+          <h1 className="text-xl font-bold">Operations Manager</h1>
           <button onClick={load} className="ml-auto flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600">
             <RefreshCcw size={12} className={loading ? "animate-spin" : ""} /> Refresh
           </button>

@@ -858,3 +858,12 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS primary_commodities TEXT[] NOT NUL
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS requires_reefer BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS requires_hazmat BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS preferred_carrier_scacs TEXT[] NOT NULL DEFAULT '{}';
+
+-- Rapid Dispatch: richer staging capture per Roger's system-check request —
+-- driver name (phone already existed), trailer/seal number for real
+-- chain-of-custody tracking, dock door assignment, and freeform handling
+-- notes for anything unusual at dispatch time.
+ALTER TABLE outbound_staging ADD COLUMN IF NOT EXISTS driver_name TEXT;
+ALTER TABLE outbound_staging ADD COLUMN IF NOT EXISTS trailer_seal_number TEXT;
+ALTER TABLE outbound_staging ADD COLUMN IF NOT EXISTS dock_door TEXT;
+ALTER TABLE outbound_staging ADD COLUMN IF NOT EXISTS handling_notes TEXT;
