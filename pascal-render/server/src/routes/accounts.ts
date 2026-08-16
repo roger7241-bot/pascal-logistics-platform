@@ -25,6 +25,7 @@ export interface Account {
   legalEntityName?: string;
   operatingDba?: string;
   addressStreet?: string;
+  addressLine2?: string;
   addressCity?: string;
   addressStateOrProvince?: string;
   addressPostalCode?: string;
@@ -34,6 +35,9 @@ export interface Account {
   shippingContactName?: string;
   shippingContactEmail?: string;
   shippingContactPhone?: string;
+  secondaryContactName?: string;
+  secondaryContactEmail?: string;
+  secondaryContactPhone?: string;
   primaryContactName?: string;
   primaryContactEmail?: string;
   primaryContactPhone?: string;
@@ -76,6 +80,7 @@ function rowToAccount(row: Record<string, unknown>): Account {
     companyName: row.company_name as string,
     legalEntityName: (row.legal_entity_name as string) ?? undefined,
     addressStreet: (row.address_street as string) ?? undefined,
+    addressLine2: (row.address_line2 as string) ?? undefined,
     addressCity: (row.address_city as string) ?? undefined,
     addressStateOrProvince: (row.address_state_or_province as string) ?? undefined,
     addressPostalCode: (row.address_postal_code as string) ?? undefined,
@@ -85,6 +90,9 @@ function rowToAccount(row: Record<string, unknown>): Account {
     shippingContactName: (row.shipping_contact_name as string) ?? undefined,
     shippingContactEmail: (row.shipping_contact_email as string) ?? undefined,
     shippingContactPhone: (row.shipping_contact_phone as string) ?? undefined,
+    secondaryContactName: (row.secondary_contact_name as string) ?? undefined,
+    secondaryContactEmail: (row.secondary_contact_email as string) ?? undefined,
+    secondaryContactPhone: (row.secondary_contact_phone as string) ?? undefined,
     operatingDba: (row.operating_dba as string) ?? undefined,
     primaryContactName: (row.primary_contact_name as string) ?? undefined,
     primaryContactEmail: (row.primary_contact_email as string) ?? undefined,
@@ -160,14 +168,15 @@ export function createAccountsRouter(): Router {
       `INSERT INTO accounts (
         org_id, company_name, legal_entity_name, primary_contact_name, primary_contact_email, primary_contact_phone,
         address_street, address_city, address_state_or_province, address_postal_code, address_country_code, website, industry,
-        shipping_contact_name, shipping_contact_email, shipping_contact_phone,
+        address_line2, shipping_contact_name, shipping_contact_email, shipping_contact_phone,
+        secondary_contact_name, secondary_contact_email, secondary_contact_phone,
         country_of_incorporation, us_ein, us_dot_number, mc_ff_number, ca_bn, ca_bn_program_suffix, mx_rfc,
         billing_currency, retainer_monthly_usd, overage_rate_usd, payment_terms,
         ap_email, ap_phone, ap_contact_name,
         customs_broker_name, customs_broker_account_ref, customs_broker_email, customs_broker_ops_phone, customs_poa_status, default_poe_preference,
         primary_commodities, requires_reefer, requires_hazmat, preferred_carrier_scacs,
         account_status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,'onboarding') RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,'onboarding') RETURNING *`,
       [
         body.orgId,
         body.companyName,
@@ -182,9 +191,13 @@ export function createAccountsRouter(): Router {
         body.addressCountryCode ?? null,
         body.website ?? null,
         body.industry ?? null,
+        body.addressLine2 ?? null,
         body.shippingContactName ?? null,
         body.shippingContactEmail ?? null,
         body.shippingContactPhone ?? null,
+        body.secondaryContactName ?? null,
+        body.secondaryContactEmail ?? null,
+        body.secondaryContactPhone ?? null,
         body.countryOfIncorporation ?? null,
         body.usEin ?? null,
         body.usDotNumber ?? null,

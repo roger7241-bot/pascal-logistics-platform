@@ -3,6 +3,7 @@ import { Users, Plus, X, Loader2, TrendingUp, ShieldCheck, Building2, FileStack,
 import { OperatorHeader } from "../components/OperatorHeader";
 import { KpiCard, ProgressBar } from "../components/KpiCard";
 import { AddressAutocompleteInput } from "../components/AddressAutocompleteInput";
+import { subdivisionsForCountry } from "../lib/subdivisions";
 import { api } from "../config/api";
 
 interface Account {
@@ -12,6 +13,7 @@ interface Account {
   legalEntityName?: string;
   operatingDba?: string;
   addressStreet?: string;
+  addressLine2?: string;
   addressCity?: string;
   addressStateOrProvince?: string;
   addressPostalCode?: string;
@@ -21,10 +23,14 @@ interface Account {
   shippingContactName?: string;
   shippingContactEmail?: string;
   shippingContactPhone?: string;
+  secondaryContactName?: string;
+  secondaryContactEmail?: string;
+  secondaryContactPhone?: string;
   primaryContactName?: string;
   primaryContactEmail?: string;
   operationsManagerName?: string;
   apEmail?: string;
+  apPhone?: string;
   apContactName?: string;
   usEin?: string;
   usDotNumber?: string;
@@ -122,6 +128,7 @@ export function CrmAccountsPage() {
   const [companyName, setCompanyName] = useState("");
   const [primaryContactName, setPrimaryContactName] = useState("");
   const [addressStreet, setAddressStreet] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
   const [addressCity, setAddressCity] = useState("");
   const [addressStateOrProvince, setAddressStateOrProvince] = useState("");
   const [addressPostalCode, setAddressPostalCode] = useState("");
@@ -150,6 +157,10 @@ export function CrmAccountsPage() {
   const [paymentTerms, setPaymentTerms] = useState<"net15" | "net30" | "due_upon_receipt">("net30");
   const [apContactName, setApContactName] = useState("");
   const [apEmail, setApEmail] = useState("");
+  const [apPhone, setApPhone] = useState("");
+  const [secondaryContactName, setSecondaryContactName] = useState("");
+  const [secondaryContactEmail, setSecondaryContactEmail] = useState("");
+  const [secondaryContactPhone, setSecondaryContactPhone] = useState("");
   const [primaryCommoditiesInput, setPrimaryCommoditiesInput] = useState("");
   const [requiresReefer, setRequiresReefer] = useState(false);
   const [requiresHazmat, setRequiresHazmat] = useState(false);
@@ -199,6 +210,7 @@ export function CrmAccountsPage() {
         primaryContactEmail: primaryContactEmail || undefined,
         primaryContactPhone: primaryContactPhone || undefined,
         addressStreet: addressStreet || undefined,
+        addressLine2: addressLine2 || undefined,
         addressCity: addressCity || undefined,
         addressStateOrProvince: addressStateOrProvince || undefined,
         addressPostalCode: addressPostalCode || undefined,
@@ -208,6 +220,9 @@ export function CrmAccountsPage() {
         shippingContactName: shippingContactName || undefined,
         shippingContactEmail: shippingContactEmail || undefined,
         shippingContactPhone: shippingContactPhone || undefined,
+        secondaryContactName: secondaryContactName || undefined,
+        secondaryContactEmail: secondaryContactEmail || undefined,
+        secondaryContactPhone: secondaryContactPhone || undefined,
         countryOfIncorporation,
         billingCurrency,
         retainerMonthlyUsd: retainerMonthlyUsd ? Number(retainerMonthlyUsd) : undefined,
@@ -215,6 +230,7 @@ export function CrmAccountsPage() {
         paymentTerms,
         apContactName: apContactName || undefined,
         apEmail: apEmail || undefined,
+        apPhone: apPhone || undefined,
         customsBrokerName: customsBrokerName || undefined,
         customsBrokerAccountRef: customsBrokerAccountRef || undefined,
         customsBrokerEmail: customsBrokerEmail || undefined,
@@ -237,9 +253,13 @@ export function CrmAccountsPage() {
       setAddressPostalCode("");
       setWebsite("");
       setIndustry("");
+      setAddressLine2("");
       setShippingContactName("");
       setShippingContactEmail("");
       setShippingContactPhone("");
+      setSecondaryContactName("");
+      setSecondaryContactEmail("");
+      setSecondaryContactPhone("");
       setPrimaryContactEmail("");
       setPrimaryContactPhone("");
       setTaxIdField("");
@@ -254,6 +274,7 @@ export function CrmAccountsPage() {
       setOverageRateUsd("");
       setApContactName("");
       setApEmail("");
+      setApPhone("");
       setPrimaryCommoditiesInput("");
       setPreferredCarrierScacsInput("");
       setRequiresReefer(false);
@@ -389,11 +410,12 @@ export function CrmAccountsPage() {
                       </p>
                       <p>
                         <strong>AP:</strong> {detail.account.apEmail ?? "—"}
+                        {detail.account.apPhone && ` · ${detail.account.apPhone}`}
                       </p>
                       <p>
                         <strong>Address:</strong>{" "}
                         {detail.account.addressStreet
-                          ? `${detail.account.addressStreet}, ${detail.account.addressCity ?? ""}, ${detail.account.addressStateOrProvince ?? ""} ${detail.account.addressPostalCode ?? ""}`.replace(/\s+/g, " ").trim()
+                          ? `${detail.account.addressStreet}${detail.account.addressLine2 ? `, ${detail.account.addressLine2}` : ""}, ${detail.account.addressCity ?? ""}, ${detail.account.addressStateOrProvince ?? ""} ${detail.account.addressPostalCode ?? ""}`.replace(/\s+/g, " ").trim()
                           : "—"}
                       </p>
                       {(detail.account.website || detail.account.industry) && (
@@ -408,6 +430,13 @@ export function CrmAccountsPage() {
                           <strong>Shipping contact:</strong> {detail.account.shippingContactName}
                           {detail.account.shippingContactPhone && ` · ${detail.account.shippingContactPhone}`}
                           {detail.account.shippingContactEmail && ` · ${detail.account.shippingContactEmail}`}
+                        </p>
+                      )}
+                      {detail.account.secondaryContactName && (
+                        <p>
+                          <strong>Secondary contact:</strong> {detail.account.secondaryContactName}
+                          {detail.account.secondaryContactPhone && ` · ${detail.account.secondaryContactPhone}`}
+                          {detail.account.secondaryContactEmail && ` · ${detail.account.secondaryContactEmail}`}
                         </p>
                       )}
                       <p>
@@ -619,16 +648,32 @@ export function CrmAccountsPage() {
                       }}
                     />
                   </div>
+                  <input value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Suite / Unit / Floor (optional)" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
                   <input value={addressCity} onChange={(e) => setAddressCity(e.target.value)} placeholder="City" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                  <input value={addressStateOrProvince} onChange={(e) => setAddressStateOrProvince(e.target.value)} placeholder="State / Province" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
                   <select value={addressCountryCode} onChange={(e) => setAddressCountryCode(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
                     <option value="US">United States</option>
                     <option value="CA">Canada</option>
                     <option value="MX">Mexico</option>
                   </select>
+                  <select value={addressStateOrProvince} onChange={(e) => setAddressStateOrProvince(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">Select {addressCountryCode === "CA" ? "province" : "state"}...</option>
+                    {subdivisionsForCountry(addressCountryCode).map((sub) => (
+                      <option key={sub.code} value={sub.code}>{sub.name}</option>
+                    ))}
+                  </select>
                   <input value={addressPostalCode} onChange={(e) => setAddressPostalCode(e.target.value)} placeholder="Postal / ZIP code" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
                   <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Company website" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                  <input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Industry (e.g. Cold Chain / F&B)" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Industry (e.g. Cold Chain / F&B)" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {/* Secondary contact — a backup when the primary contact is unavailable */}
+              <div>
+                <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Secondary Contact</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={secondaryContactName} onChange={(e) => setSecondaryContactName(e.target.value)} placeholder="Name" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={secondaryContactEmail} onChange={(e) => setSecondaryContactEmail(e.target.value)} placeholder="Email" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={secondaryContactPhone} onChange={(e) => setSecondaryContactPhone(e.target.value)} placeholder="Phone" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
                 </div>
               </div>
 
@@ -708,8 +753,9 @@ export function CrmAccountsPage() {
                     <option value="net30">Net 30</option>
                     <option value="due_upon_receipt">Due Upon Receipt</option>
                   </select>
-                  <input value={apContactName} onChange={(e) => setApContactName(e.target.value)} placeholder="Billing contact name (if different)" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={apContactName} onChange={(e) => setApContactName(e.target.value)} placeholder="Billing contact name (if different)" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
                   <input value={apEmail} onChange={(e) => setApEmail(e.target.value)} placeholder="AP email (if different)" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={apPhone} onChange={(e) => setApPhone(e.target.value)} placeholder="AP phone" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
                 </div>
               </div>
 

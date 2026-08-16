@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { ShieldCheck, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { ShieldCheck, CheckCircle2, XCircle, Loader2, MapPin } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
+import { ShipmentLocationModal } from "../components/ShipmentLocationModal";
 import { api } from "../config/api";
 
 interface ExecutiveDraft {
@@ -18,6 +19,7 @@ export function ExecutiveReviewPage() {
   const [drafts, setDrafts] = useState<ExecutiveDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [deciding, setDeciding] = useState<string | undefined>(undefined);
+  const [locationShipmentId, setLocationShipmentId] = useState<string | undefined>(undefined);
 
   const load = () => {
     setLoading(true);
@@ -91,11 +93,19 @@ export function ExecutiveReviewPage() {
                 >
                   <XCircle size={13} /> Reject
                 </button>
+                <button
+                  onClick={() => setLocationShipmentId(draft.shipmentId)}
+                  className="flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  <MapPin size={13} /> View Location
+                </button>
               </div>
             </div>
           ))}
         </div>
       </main>
+
+      {locationShipmentId && <ShipmentLocationModal shipmentId={locationShipmentId} onClose={() => setLocationShipmentId(undefined)} />}
     </div>
   );
 }

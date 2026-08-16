@@ -16,13 +16,13 @@ export function AppHeader() {
   return (
     <header className="border-b border-slate-800 bg-slate-900">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
-            <Compass size={16} strokeWidth={2.5} />
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-cyan-400 text-slate-950">
+            <Compass size={22} strokeWidth={2.5} />
           </div>
           <div>
-            <p className="text-sm font-bold leading-tight text-slate-50">Pascal Logistics</p>
-            <p className="text-xs font-mono uppercase tracking-wide text-slate-400">Fractional Logistics Platform</p>
+            <p className="text-lg font-bold leading-tight text-slate-50">Pascal Logistics</p>
+            <p className="text-sm font-mono uppercase tracking-wide text-slate-400">Fractional Logistics Platform</p>
           </div>
         </div>
         <SimulationButton />

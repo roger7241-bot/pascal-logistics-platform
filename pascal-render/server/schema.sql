@@ -888,3 +888,11 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS industry TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS shipping_contact_name TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS shipping_contact_email TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS shipping_contact_phone TEXT;
+
+-- Address line 2 (suite/unit) and a genuine secondary contact — distinct
+-- from primary, AP/billing, and shipping department contacts, for when
+-- the primary contact is unavailable.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS address_line2 TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS secondary_contact_name TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS secondary_contact_email TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS secondary_contact_phone TEXT;

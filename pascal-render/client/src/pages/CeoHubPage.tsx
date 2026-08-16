@@ -10,11 +10,11 @@ import {
   AlertTriangle,
   Radio,
   DollarSign,
-  X,
 } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { BorderCameraGrid } from "../components/BorderCameraGrid";
 import { KpiCard, ProgressBar } from "../components/KpiCard";
+import { ShipmentLocationModal } from "../components/ShipmentLocationModal";
 import { api } from "../config/api";
 
 interface CeoMetrics {
@@ -72,26 +72,6 @@ interface AttentionItem {
   linkId: string;
 }
 
-interface ShipmentLocation {
-  id: string;
-  clientOrg?: string;
-  lane: string;
-  transportMode: string;
-  statusChip: string;
-  tracker: { steps: { milestone: string; label: string }[]; currentIndex: number; percentComplete: number };
-  carrierName?: string;
-  bolNumber?: string;
-  proNumber?: string;
-  driverName?: string;
-  driverPhone?: string;
-  vesselName?: string;
-  flightNumber?: string;
-  etaIso?: string;
-  updatedAtIso: string;
-  liveBorderWait?: { poeId: string; waitMinutes: number; status: string; asOfIso: string };
-  locationBasis: string;
-}
-
 interface BorderReading {
   poeId: string;
   direction: string;
@@ -137,17 +117,7 @@ export function CeoHubPage() {
   const [corridorShipments, setCorridorShipments] = useState<CorridorShipment[]>([]);
   const [shipmentSnapshot, setShipmentSnapshot] = useState<{ inbound: SnapshotShipment[]; outbound: SnapshotShipment[] }>({ inbound: [], outbound: [] });
   const [attentionQueue, setAttentionQueue] = useState<AttentionItem[]>([]);
-  const [locationDetail, setLocationDetail] = useState<ShipmentLocation | undefined>(undefined);
-  const [locationLoading, setLocationLoading] = useState(false);
-
-  function openLocationDetail(shipmentId: string) {
-    setLocationLoading(true);
-    setLocationDetail(undefined);
-    api
-      .ceoShipmentLocation<ShipmentLocation>(shipmentId)
-      .then(setLocationDetail)
-      .finally(() => setLocationLoading(false));
-  }
+  const [locationShipmentId, setLocationShipmentId] = useState<string | undefined>(undefined);
   const [borderReadings, setBorderReadings] = useState<BorderReading[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<(typeof FILTER_TABS)[number]["key"]>("all");
@@ -280,7 +250,7 @@ export function CeoHubPage() {
                   {attentionQueue.map((item, i) => (
                     <button
                       key={i}
-                      onClick={() => item.linkId.startsWith("SHIP-") && openLocationDetail(item.linkId)}
+                      onClick={() => item.linkId.startsWith("SHIP-") && setLocationShipmentId(item.linkId)}
                       className={`flex w-full items-start gap-3 px-5 py-3 text-left ${item.linkId.startsWith("SHIP-") ? "hover:bg-amber-100" : "cursor-default"}`}
                     >
                       <span
@@ -324,7 +294,7 @@ export function CeoHubPage() {
                     <div className="divide-y divide-slate-100">
                       {shipmentSnapshot[dir].length === 0 && <p className="px-5 py-6 text-center text-xs text-slate-400">No {dir} shipments on file.</p>}
                       {shipmentSnapshot[dir].map((s) => (
-                        <button key={s.id} onClick={() => openLocationDetail(s.id)} className="flex w-full items-center justify-between gap-3 px-5 py-2.5 text-left hover:bg-slate-50">
+                        <button key={s.id} onClick={() => setLocationShipmentId(s.id)} className="flex w-full items-center justify-between gap-3 px-5 py-2.5 text-left hover:bg-slate-50">
                           <div className="min-w-0">
                             <p className="font-mono text-xs font-semibold text-slate-900">
                               {s.id} <span className="font-sans font-normal text-slate-400">· {s.clientOrg}</span>
@@ -445,83 +415,7 @@ export function CeoHubPage() {
 
       {camerasOpen && <BorderCameraGrid onClose={() => setCamerasOpen(false)} poeFilter={Object.keys(COMMERCIAL_POE_LABELS)} />}
 
-      {(locationLoading || locationDetail) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setLocationDetail(undefined)}>
-          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-200 bg-white p-5" onClick={(e) => e.stopPropagation()}>
-            {locationLoading && !locationDetail ? (
-              <p className="py-8 text-center text-sm text-slate-400">Loading…</p>
-            ) : locationDetail ? (
-              <>
-                <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <p className="font-mono text-sm font-bold">{locationDetail.id}</p>
-                    <p className="text-xs text-slate-500">{locationDetail.clientOrg} · {locationDetail.lane}</p>
-                  </div>
-                  <button onClick={() => setLocationDetail(undefined)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
-                    <X size={16} />
-                  </button>
-                </div>
-
-                {/* Milestone tracker — the real "where does this stand" signal */}
-                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-mono uppercase tracking-wide text-slate-500">Current Stage</p>
-                    <p className="text-xs font-semibold text-slate-700">{locationDetail.tracker.percentComplete}% complete</p>
-                  </div>
-                  <ProgressBar percent={locationDetail.tracker.percentComplete} colorClass="bg-cyan-500" />
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {locationDetail.tracker.steps.map((step, i) => (
-                      <span
-                        key={step.milestone}
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                          i === locationDetail.tracker.currentIndex
-                            ? "bg-cyan-600 text-white"
-                            : i < locationDetail.tracker.currentIndex
-                            ? "bg-cyan-100 text-cyan-700"
-                            : "bg-slate-200 text-slate-500"
-                        }`}
-                      >
-                        {step.label}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Live border wait, when applicable — genuinely live, not a static number */}
-                {locationDetail.liveBorderWait && (
-                  <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
-                    <p className="mb-1 text-xs font-mono uppercase tracking-wide text-amber-800">Live Border Wait — {locationDetail.liveBorderWait.poeId}</p>
-                    <p className="text-lg font-bold text-amber-900">{locationDetail.liveBorderWait.waitMinutes} min</p>
-                    <p className="text-[11px] text-amber-600">As of {new Date(locationDetail.liveBorderWait.asOfIso).toLocaleTimeString()} — {locationDetail.liveBorderWait.status}</p>
-                  </div>
-                )}
-
-                <div className="space-y-1.5 text-xs">
-                  <p><strong>Carrier:</strong> {locationDetail.carrierName ?? "—"}</p>
-                  {(locationDetail.bolNumber || locationDetail.proNumber) && (
-                    <p>
-                      {locationDetail.bolNumber && <><strong>BOL #:</strong> <span className="font-mono">{locationDetail.bolNumber}</span></>}
-                      {locationDetail.bolNumber && locationDetail.proNumber && "  ·  "}
-                      {locationDetail.proNumber && <><strong>PRO #:</strong> <span className="font-mono">{locationDetail.proNumber}</span></>}
-                    </p>
-                  )}
-                  {locationDetail.driverName && (
-                    <p><strong>Driver:</strong> {locationDetail.driverName} {locationDetail.driverPhone && `· ${locationDetail.driverPhone}`}</p>
-                  )}
-                  {locationDetail.vesselName && <p><strong>Vessel:</strong> {locationDetail.vesselName}</p>}
-                  {locationDetail.flightNumber && <p><strong>Flight:</strong> {locationDetail.flightNumber}</p>}
-                  <p><strong>ETA:</strong> {locationDetail.etaIso ? new Date(locationDetail.etaIso).toLocaleString() : "—"}</p>
-                  <p><strong>Last updated:</strong> {new Date(locationDetail.updatedAtIso).toLocaleString()}</p>
-                </div>
-
-                <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-500">
-                  Based on milestone tracking{locationDetail.liveBorderWait ? " and live border wait telemetry" : ""} — not GPS. This system doesn't have a live carrier-tracking integration (e.g. Project44, FourKites, or ELD access) yet, so this reflects the most recent known status rather than a real-time map position.
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-      )}
+      {locationShipmentId && <ShipmentLocationModal shipmentId={locationShipmentId} onClose={() => setLocationShipmentId(undefined)} />}
     </div>
   );
 }
