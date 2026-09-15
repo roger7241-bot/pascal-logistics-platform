@@ -77,9 +77,14 @@ export const api = {
   clientShipments: <TResult = unknown>() => request<TResult>("/api/client/shipments"),
   clientQuoteCompare: <TResult = unknown>(payload: unknown) => request<TResult>("/api/client/quote-compare", { method: "POST", body: payload }),
   clientRequestBooking: <TResult = unknown>(payload: unknown) => request<TResult>("/api/client/booking-requests", { method: "POST", body: payload }),
-  clientProfile: <TResult = unknown>() => request<TResult>("/api/client/profile"),
-  clientTariffUpdates: <TResult = unknown>(limit?: number) => request<TResult>(`/api/client/tariff-updates${limit ? `?limit=${limit}` : ""}`),
-  clientPortalSummary: <TResult = unknown>() => request<TResult>("/api/client/portal-summary"),
+  clientProfile: <TResult = unknown>(previewOrgId?: string) => request<TResult>(`/api/client/profile${previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`),
+  clientTariffUpdates: <TResult = unknown>(limit?: number, previewOrgId?: string) => {
+    const params: string[] = [];
+    if (limit) params.push(`limit=${limit}`);
+    if (previewOrgId) params.push(`orgId=${encodeURIComponent(previewOrgId)}`);
+    return request<TResult>(`/api/client/tariff-updates${params.length ? `?${params.join("&")}` : ""}`);
+  },
+  clientPortalSummary: <TResult = unknown>(previewOrgId?: string) => request<TResult>(`/api/client/portal-summary${previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`),
   bookingRequests: <TResult = unknown>(status?: string) => request<TResult>(`/api/operator/booking-requests${status ? `?status=${status}` : ""}`),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),

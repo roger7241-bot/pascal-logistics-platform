@@ -476,13 +476,25 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     return res.status(201).json({ bookingRequest: result.rows[0] });
   });
 
+  // Operators can preview the client portal for any account they manage by
+  // passing ?orgId=... query param. Clients are always locked to their own
+  // authUser.orgId — never trust a query-string orgId from a client role.
+  function resolveClientOrgId(req: Request): string | undefined {
+    if (req.authUser?.role === "operator") {
+      const queryOrgId = typeof req.query.orgId === "string" ? req.query.orgId : undefined;
+      return queryOrgId ?? req.authUser?.orgId ?? undefined;
+    }
+    return req.authUser?.orgId ?? undefined;
+  }
+
   // ==========================================================================
   // CLIENT PROFILE — returns the account + shipping-profile capabilities
   // for the authenticated client. Used by the Client Portal to gate which
-  // widgets render (cross-border only, etc.).
+  // widgets render (cross-border only, etc.). Operators can preview any
+  // account by passing ?orgId=…
   // ==========================================================================
   router.get("/profile", async (req: Request, res: Response) => {
-    const authOrgId = req.authUser?.orgId;
+    const authOrgId = resolveClientOrgId(req);
     if (!authOrgId) return res.status(400).json({ error: "This account has no org on file." });
     const result = await pool.query(
       "SELECT id, org_id, company_name, retainer_tier, client_capabilities, billing_currency FROM accounts WHERE org_id = $1",
@@ -509,7 +521,7 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
   // callers should already have gated on client_capabilities.
   // ==========================================================================
   router.get("/tariff-updates", async (req: Request, res: Response) => {
-    const authOrgId = req.authUser?.orgId;
+    const authOrgId = resolveClientOrgId(req);
     if (!authOrgId) return res.status(400).json({ error: "This account has no org on file." });
 
     const capResult = await pool.query("SELECT client_capabilities FROM accounts WHERE org_id = $1", [authOrgId]);
@@ -545,7 +557,7 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
   // the request.
   // ==========================================================================
   router.get("/portal-summary", async (req: Request, res: Response) => {
-    const authOrgId = req.authUser?.orgId;
+    const authOrgId = resolveClientOrgId(req);
     if (!authOrgId) return res.status(400).json({ error: "This account has no org on file." });
 
     const [poaResult, usmcaResult, expiringDocs, carrierResult] = await Promise.all([

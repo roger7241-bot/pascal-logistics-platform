@@ -20,16 +20,19 @@ export interface ClientProfile {
   clientCapabilities: ClientCapabilities;
 }
 
-export function useClientProfile(): { profile: ClientProfile | undefined; loading: boolean; error?: string } {
+export function useClientProfile(previewOrgId?: string): { profile: ClientProfile | undefined; loading: boolean; error?: string } {
   const [profile, setProfile] = useState<ClientProfile | undefined>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(undefined);
+    setProfile(undefined);
     async function load() {
       try {
-        const result = await api.clientProfile<{ profile: ClientProfile }>();
+        const result = await api.clientProfile<{ profile: ClientProfile }>(previewOrgId);
         if (!cancelled) setProfile(result.profile);
       } catch (err) {
         if (!cancelled) setError(err instanceof ApiError ? err.message : "Failed to load profile.");
@@ -39,7 +42,7 @@ export function useClientProfile(): { profile: ClientProfile | undefined; loadin
     }
     void load();
     return () => { cancelled = true; };
-  }, []);
+  }, [previewOrgId]);
 
   return { profile, loading, error };
 }

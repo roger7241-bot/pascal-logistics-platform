@@ -29,15 +29,17 @@ const POA_LABEL: Record<string, { label: string; ok: boolean }> = {
   expired_needs_renewal: { label: "Expired — needs renewal", ok: false },
 };
 
-export function DocumentsCurrentCard() {
+export function DocumentsCurrentCard({ previewOrgId }: { previewOrgId?: string } = {}) {
   const [state, setState] = useState<Summary["documentsCurrent"] | undefined>();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setState(undefined);
     async function load() {
       try {
-        const result = await api.clientPortalSummary<Summary>();
+        const result = await api.clientPortalSummary<Summary>(previewOrgId);
         if (cancelled) return;
         setState(result.documentsCurrent);
       } catch {
@@ -48,7 +50,7 @@ export function DocumentsCurrentCard() {
     }
     void load();
     return () => { cancelled = true; };
-  }, []);
+  }, [previewOrgId]);
 
   const poa = state?.poaStatus ? POA_LABEL[state.poaStatus] ?? { label: state.poaStatus, ok: false } : undefined;
   const expiringSoon = state?.expiringSoonCount ?? 0;

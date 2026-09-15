@@ -39,16 +39,19 @@ function scoreIcon(onTimePct: number | undefined) {
   return <TrendingDown size={11} />;
 }
 
-export function CarrierScorecardWidget() {
+export function CarrierScorecardWidget({ previewOrgId }: { previewOrgId?: string } = {}) {
   const [rows, setRows] = useState<CarrierRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(undefined);
+    setRows([]);
     async function load() {
       try {
-        const result = await api.clientPortalSummary<Summary>();
+        const result = await api.clientPortalSummary<Summary>(previewOrgId);
         if (cancelled) return;
         setRows(result.carrierScorecard ?? []);
       } catch (err) {
@@ -59,7 +62,7 @@ export function CarrierScorecardWidget() {
     }
     void load();
     return () => { cancelled = true; };
-  }, []);
+  }, [previewOrgId]);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm">

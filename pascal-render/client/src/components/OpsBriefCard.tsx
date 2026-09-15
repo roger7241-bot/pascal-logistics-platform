@@ -16,16 +16,19 @@ interface Summary {
   opsBrief?: { cadence?: string; deliveryTime?: string; nextIso?: string };
 }
 
-export function OpsBriefCard() {
+export function OpsBriefCard({ previewOrgId }: { previewOrgId?: string } = {}) {
   const [next, setNext] = useState<Date | undefined>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(undefined);
+    setNext(undefined);
     async function load() {
       try {
-        const result = await api.clientPortalSummary<Summary>();
+        const result = await api.clientPortalSummary<Summary>(previewOrgId);
         if (cancelled) return;
         if (result.opsBrief?.nextIso) setNext(new Date(result.opsBrief.nextIso));
       } catch (err) {
@@ -36,7 +39,7 @@ export function OpsBriefCard() {
     }
     void load();
     return () => { cancelled = true; };
-  }, []);
+  }, [previewOrgId]);
 
   const daysUntil = next ? Math.max(0, Math.round((next.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : undefined;
 

@@ -44,7 +44,7 @@ const SEVERITY_CLASS: Record<TariffUpdate["severity"], string> = {
   info: "bg-sky-100 text-sky-700 border-sky-200",
 };
 
-export function TariffWatchWidget() {
+export function TariffWatchWidget({ previewOrgId }: { previewOrgId?: string } = {}) {
   const [updates, setUpdates] = useState<TariffUpdate[]>([]);
   const [tracked, setTracked] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,9 +53,11 @@ export function TariffWatchWidget() {
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(undefined);
     async function load() {
       try {
-        const result = await api.clientTariffUpdates<{ tariffUpdates: TariffUpdate[]; trackedHsCodes: string[] }>(8);
+        const result = await api.clientTariffUpdates<{ tariffUpdates: TariffUpdate[]; trackedHsCodes: string[] }>(8, previewOrgId);
         if (cancelled) return;
         setUpdates(result.tariffUpdates);
         setTracked(result.trackedHsCodes);
@@ -67,7 +69,7 @@ export function TariffWatchWidget() {
     }
     void load();
     return () => { cancelled = true; };
-  }, []);
+  }, [previewOrgId]);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm">

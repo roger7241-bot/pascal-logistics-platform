@@ -14,6 +14,9 @@ import { DocumentsCurrentCard } from "../components/DocumentsCurrentCard";
 import { CarrierScorecardWidget } from "../components/CarrierScorecardWidget";
 import { useClientProfile } from "../hooks/useClientProfile";
 import { isCrossBorder } from "../lib/clientCapabilities";
+import { useAuth } from "../contexts/AuthContext";
+import { useSearchParams } from "react-router-dom";
+import { Eye } from "lucide-react";
 import { api } from "../config/api";
 import type { ClientShipmentSummary, StatusChip } from "../types/shipment";
 import type { RerouteAdvisory } from "../types/reroute";
@@ -76,7 +79,23 @@ const RETAINER_SUMMARY = {
 };
 
 export function ClientPortalPage() {
-  const { profile } = useClientProfile();
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const previewOrgId = user?.role === "operator" ? searchParams.get("orgId") ?? undefined : undefined;
+
+  // Operator-only preview: dropdown at the top lets the operator inspect
+  // any client's portal experience without logging out. Clients never
+  // hit this code path; the query param is ignored for client-role
+  // callers on the backend too.
+  const [previewAccounts, setPreviewAccounts] = useState<Array<{ orgId: string; companyName: string }>>([]);
+  useEffect(() => {
+    if (user?.role !== "operator") return;
+    api.accounts<{ accounts: Array<{ orgId: string; companyName: string }> }>()
+      .then((r) => setPreviewAccounts(r.accounts))
+      .catch(() => { /* preview picker is a nice-to-have; silent-fail if unavailable */ });
+  }, [user?.role]);
+
+  const { profile } = useClientProfile(previewOrgId);
   const showCrossBorderWidgets = isCrossBorder(profile?.clientCapabilities);
   const [shipments, setShipments] = useState<ClientShipmentSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,7 +151,37 @@ export function ClientPortalPage() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <AppHeader />
       <main className="mx-auto max-w-5xl space-y-4 p-6">
-        <h1 className="text-xl font-bold">Client Self-Service Portal</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-xl font-bold">
+            Client Self-Service Portal
+            {profile && previewOrgId && <span className="ml-2 text-sm font-normal text-slate-500">· {profile.companyName}</span>}
+          </h1>
+          {user?.role === "operator" && (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <Eye size={14} className="text-amber-700" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">Preview as client</span>
+              <select
+                value={previewOrgId ?? ""}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (next) setSearchParams({ orgId: next });
+                  else setSearchParams({});
+                }}
+                className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-slate-900 focus:border-amber-500 focus:outline-none"
+              >
+                <option value="">— pick a client —</option>
+                {previewAccounts.map((a) => (
+                  <option key={a.orgId} value={a.orgId}>{a.companyName} · {a.orgId}</option>
+                ))}
+              </select>
+              {previewOrgId && (
+                <button type="button" onClick={() => setSearchParams({})} className="text-[11px] font-medium text-amber-800 hover:text-amber-900 underline">
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {pendingAdvisories.map((advisory) => (
           <ClientRerouteSignoffCard
@@ -183,13 +232,13 @@ export function ClientPortalPage() {
             Tariff Watch renders for cross-border shippers filtered to
             their tracked HS codes. */}
         <div className={`grid grid-cols-1 gap-3 ${showCrossBorderWidgets ? "sm:grid-cols-2" : "sm:grid-cols-2"}`}>
-          <OpsBriefCard />
-          {showCrossBorderWidgets && <DocumentsCurrentCard />}
+          <OpsBriefCard previewOrgId={previewOrgId} />
+          {showCrossBorderWidgets && <DocumentsCurrentCard previewOrgId={previewOrgId} />}
         </div>
 
-        {showCrossBorderWidgets && <TariffWatchWidget />}
+        {showCrossBorderWidgets && <TariffWatchWidget previewOrgId={previewOrgId} />}
 
-        <CarrierScorecardWidget />
+        <CarrierScorecardWidget previewOrgId={previewOrgId} />
 
         {/* Spot Rate Explorer — self-serve rate lookup for planning ahead.
             "Request booking" doesn't book directly; it flags the operator
