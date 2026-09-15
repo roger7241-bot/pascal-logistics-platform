@@ -16,6 +16,8 @@ import { pool } from "../db/pool.js";
 import { categorizeAndDraft as chiefCategorize, persistDraft as chiefPersist, type InboundMessage } from "../services/agent6ChiefOfStaff.js";
 import { categorizeAndDraft as bookingCategorize, persistDraft as bookingPersist, type BookingEvent } from "../services/agent12BookingDispatch.js";
 import { categorizeAndDraft as customsCategorize, persistDraft as customsPersist, type CustomsEvent } from "../services/agent13CustomsLiaison.js";
+import { categorizeAndDraft as vettingCategorize, persistDraft as vettingPersist, type VettingRequest } from "../services/agent14CarrierVetting.js";
+import { categorizeAndDraft as claimsCategorize, persistDraft as claimsPersist, type ClaimEvent, type ClaimStage } from "../services/agent15ClaimsOsd.js";
 
 export function createAgentsRouter(): Router {
   const router = Router();
@@ -153,6 +155,67 @@ export function createAgentsRouter(): Router {
     };
     const output = await customsCategorize(event);
     const draft = await customsPersist(event, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  // Simulate a carrier vetting request. Defaults land at a clean carrier so
+  // Roger can toggle any red flag (expired insurance, high SMS score, no W9)
+  // and see the deterministic audit fire.
+  router.post("/agents/carrier-vetting/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.carrierName || !b.eventType) {
+      return res.status(400).json({ error: "carrierName and eventType are required." });
+    }
+    const request: VettingRequest = {
+      carrierName: String(b.carrierName),
+      mcNumber: b.mcNumber ? String(b.mcNumber) : undefined,
+      dotNumber: b.dotNumber ? String(b.dotNumber) : undefined,
+      eventType: String(b.eventType),
+      authorityActive: b.authorityActive !== false,
+      insuranceAutoLiabilityUsd: typeof b.insuranceAutoLiabilityUsd === "number" ? b.insuranceAutoLiabilityUsd : 1_000_000,
+      insuranceCargoUsd: typeof b.insuranceCargoUsd === "number" ? b.insuranceCargoUsd : 100_000,
+      insuranceExpiresIso: b.insuranceExpiresIso ? String(b.insuranceExpiresIso) : undefined,
+      smsUnsafeDriving: typeof b.smsUnsafeDriving === "number" ? b.smsUnsafeDriving : undefined,
+      smsHoursOfService: typeof b.smsHoursOfService === "number" ? b.smsHoursOfService : undefined,
+      smsVehicleMaintenance: typeof b.smsVehicleMaintenance === "number" ? b.smsVehicleMaintenance : undefined,
+      hasW9OnFile: b.hasW9OnFile !== false,
+      lastVerifiedIso: b.lastVerifiedIso ? String(b.lastVerifiedIso) : undefined,
+      notes: b.notes ? String(b.notes) : undefined,
+    };
+    const output = await vettingCategorize(request);
+    const draft = await vettingPersist(request, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  // Simulate a claim event. Defaults land at damage on LTL with photos +
+  // POD but no BOL notation, so the concealed-damage warning fires.
+  router.post("/agents/claims-osd/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.shipmentRef || !b.carrier || !b.eventType) {
+      return res.status(400).json({ error: "shipmentRef, carrier, and eventType are required." });
+    }
+    const validModes: ClaimEvent["mode"][] = ["ltl", "tl", "ocean", "air", "rail", "unknown"];
+    const validStages: ClaimStage[] = ["intake", "claim_filed", "carrier_response", "negotiation", "resolved", "denied", "escalated"];
+    const event: ClaimEvent = {
+      shipmentRef: String(b.shipmentRef),
+      mode: validModes.includes(b.mode) ? b.mode : "ltl",
+      carrier: String(b.carrier),
+      clientName: b.clientName ? String(b.clientName) : undefined,
+      clientEmail: b.clientEmail ? String(b.clientEmail) : undefined,
+      eventType: String(b.eventType),
+      eventDetail: String(b.eventDetail ?? ""),
+      invoiceValueUsd: typeof b.invoiceValueUsd === "number" ? b.invoiceValueUsd : undefined,
+      damagedValueUsd: typeof b.damagedValueUsd === "number" ? b.damagedValueUsd : undefined,
+      hasPhotos: b.hasPhotos !== false,
+      hasBolNotation: b.hasBolNotation === true,
+      hasSignedPod: b.hasSignedPod !== false,
+      deliveredAtIso: b.deliveredAtIso ? String(b.deliveredAtIso) : undefined,
+      stage: validStages.includes(b.stage) ? b.stage : "intake",
+      claimAmountUsd: typeof b.claimAmountUsd === "number" ? b.claimAmountUsd : undefined,
+      filedAtIso: b.filedAtIso ? String(b.filedAtIso) : undefined,
+    };
+    const output = await claimsCategorize(event);
+    const draft = await claimsPersist(event, output, `simulated:${Date.now()}`);
     return res.status(201).json({ draft, output });
   });
 

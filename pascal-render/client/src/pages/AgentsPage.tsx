@@ -1,16 +1,15 @@
 // ============================================================================
 // AgentsPage
 // Operator observability + review surface for every AI agent in the org.
-// Grid at top shows all 13 agents (7 client-facing + 6 back-office).
-// Three simulate panels — Chief of Staff (email), Booking & Dispatch
-// (milestone), Customs Liaison (packet check + entry event) — inject test
-// drafts. Review queue below shows every draft awaiting Roger's sign-off
-// with subject, summary, suggested actions, editable response, and four
-// actions: Edit, Archive, Reject, Send.
+// Grid at top shows all 15 agents (9 client-facing + 6 back-office).
+// Tabbed simulate section (Chief of Staff, Booking, Customs, Vetting,
+// Claims). Review queue below is agent-aware and renders draft-type
+// specific detail (broker + packet issues, carrier + red flags,
+// claim value + filing window, etc.).
 // ============================================================================
 
 import { useEffect, useState } from "react";
-import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck } from "lucide-react";
+import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api, ApiError } from "../config/api";
 
@@ -27,20 +26,7 @@ interface AgentRow {
   pendingDrafts: number;
 }
 
-// Payload shapes differ per agent — this is the discriminated union.
-interface ChiefPayload {
-  inbound: { fromEmail: string; fromName?: string; subject: string; body: string };
-  output: DraftOutput;
-}
-interface BookingPayload {
-  event: { shipmentRef: string; carrier: string; origin: string; destination: string; eventType: string; eventDetail: string; clientEmail?: string; clientName?: string };
-  output: DraftOutput & { recipientEmail?: string };
-}
-interface CustomsPayload {
-  event: { shipmentRef: string; direction: string; brokerName: string; brokerEmail?: string; eventType: string; eventDetail: string; entryNumber?: string; clientName?: string };
-  output: DraftOutput & { docPacketIssues: string[]; recipientRole: "broker" | "client" | "internal" };
-}
-interface DraftOutput {
+interface DraftOutputBase {
   category: string;
   priority: "urgent" | "normal" | "low";
   summary: string;
@@ -49,6 +35,26 @@ interface DraftOutput {
   draftResponseBody: string;
   simulated: boolean;
 }
+interface ChiefPayload {
+  inbound: { fromEmail: string; fromName?: string; subject: string; body: string };
+  output: DraftOutputBase;
+}
+interface BookingPayload {
+  event: { shipmentRef: string; carrier: string; origin: string; destination: string; eventType: string; eventDetail: string };
+  output: DraftOutputBase;
+}
+interface CustomsPayload {
+  event: { shipmentRef: string; direction: string; brokerName: string; entryNumber?: string };
+  output: DraftOutputBase & { docPacketIssues: string[]; recipientRole: "broker" | "client" | "internal" };
+}
+interface VettingPayload {
+  request: { carrierName: string; mcNumber?: string; dotNumber?: string; eventType: string };
+  output: DraftOutputBase & { decision: "allow" | "conditional" | "block"; redFlags: string[]; recipientRole: "carrier" | "internal" };
+}
+interface ClaimsPayload {
+  event: { shipmentRef: string; mode: string; carrier: string; eventType: string; deliveredAtIso?: string };
+  output: DraftOutputBase & { stage: string; claimValueUsd: number; filingWindowDays: number; documentationGaps: string[]; recipientRole: "carrier" | "client" | "internal" };
+}
 
 interface DraftRow {
   id: string;
@@ -56,8 +62,7 @@ interface DraftRow {
   kind: string;
   category: string | null;
   subject: string | null;
-  source_ref: string | null;
-  payload: ChiefPayload | BookingPayload | CustomsPayload;
+  payload: ChiefPayload | BookingPayload | CustomsPayload | VettingPayload | ClaimsPayload;
   status: string;
   created_at: string;
 }
@@ -69,38 +74,51 @@ const STATUS_CLASS: Record<AgentRow["status"], string> = {
   deprecated: "bg-rose-100 text-rose-700",
 };
 
-const PRIORITY_CLASS: Record<DraftOutput["priority"], string> = {
+const PRIORITY_CLASS: Record<DraftOutputBase["priority"], string> = {
   urgent: "bg-rose-100 text-rose-700 border-rose-200",
   normal: "bg-slate-100 text-slate-600 border-slate-200",
   low: "bg-sky-50 text-sky-700 border-sky-200",
 };
 
-// Extract a compact "context line" per draft type so the review card
-// stays uniform even though payload shapes differ.
+type SimTab = "chief" | "booking" | "customs" | "vetting" | "claims";
+const SIM_TABS: { key: SimTab; label: string; slot: number; icon: typeof Sparkles }[] = [
+  { key: "vetting", label: "Carrier Vetting", slot: 5, icon: ShieldAlert },
+  { key: "booking", label: "Booking & Dispatch", slot: 6, icon: Truck },
+  { key: "customs", label: "Customs", slot: 7, icon: ShieldCheck },
+  { key: "claims",  label: "Claims & OS&D", slot: 9, icon: PackageX },
+  { key: "chief",   label: "Chief of Staff", slot: 10, icon: Sparkles },
+];
+
 function draftContext(d: DraftRow): { label: string; header: string; subject: string } {
-  if (d.agent_key === "agent12_booking_dispatch") {
-    const p = d.payload as BookingPayload;
-    return {
-      label: "Booking & Dispatch",
-      header: `${p.event.carrier} · ${p.event.origin} → ${p.event.destination}`,
-      subject: `${p.event.shipmentRef}: ${p.event.eventType}`,
-    };
+  switch (d.agent_key) {
+    case "agent12_booking_dispatch": {
+      const p = d.payload as BookingPayload;
+      return { label: "Booking & Dispatch", header: `${p.event.carrier} · ${p.event.origin} → ${p.event.destination}`, subject: `${p.event.shipmentRef}: ${p.event.eventType}` };
+    }
+    case "agent13_customs_liaison": {
+      const p = d.payload as CustomsPayload;
+      return { label: "Customs Liaison", header: `Broker: ${p.event.brokerName}${p.event.entryNumber ? ` · Entry ${p.event.entryNumber}` : ""}`, subject: `${p.event.shipmentRef}: ${p.event.eventType}` };
+    }
+    case "agent14_carrier_vetting": {
+      const p = d.payload as VettingPayload;
+      return { label: "Carrier Vetting", header: `${p.request.carrierName}${p.request.mcNumber ? ` · MC ${p.request.mcNumber}` : ""}`, subject: `${p.request.carrierName}: ${p.request.eventType}` };
+    }
+    case "agent15_claims_osd": {
+      const p = d.payload as ClaimsPayload;
+      return { label: "Claims & OS&D", header: `${p.event.carrier} · ${p.event.mode.toUpperCase()}`, subject: `${p.event.shipmentRef}: ${p.event.eventType}` };
+    }
+    default: {
+      const p = d.payload as ChiefPayload;
+      return { label: "Chief of Staff", header: `from ${p.inbound.fromName ? `${p.inbound.fromName} <${p.inbound.fromEmail}>` : p.inbound.fromEmail}`, subject: p.inbound.subject };
+    }
   }
-  if (d.agent_key === "agent13_customs_liaison") {
-    const p = d.payload as CustomsPayload;
-    return {
-      label: "Customs Liaison",
-      header: `Broker: ${p.event.brokerName}${p.event.entryNumber ? ` · Entry ${p.event.entryNumber}` : ""}`,
-      subject: `${p.event.shipmentRef}: ${p.event.eventType}`,
-    };
-  }
-  const p = d.payload as ChiefPayload;
-  return {
-    label: "Chief of Staff",
-    header: `from ${p.inbound.fromName ? `${p.inbound.fromName} <${p.inbound.fromEmail}>` : p.inbound.fromEmail}`,
-    subject: p.inbound.subject,
-  };
 }
+
+const DECISION_CLASS = {
+  allow: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  conditional: "border-amber-200 bg-amber-50 text-amber-800",
+  block: "border-rose-200 bg-rose-50 text-rose-800",
+} as const;
 
 export function AgentsPage() {
   const [agents, setAgents] = useState<AgentRow[]>([]);
@@ -111,15 +129,15 @@ export function AgentsPage() {
   const [editingId, setEditingId] = useState<string | undefined>();
   const [editedSubject, setEditedSubject] = useState("");
   const [editedBody, setEditedBody] = useState("");
+  const [simTab, setSimTab] = useState<SimTab>("vetting");
+  const [simulating, setSimulating] = useState(false);
 
-  // Chief of Staff simulate state
+  // Per-tab simulate state — kept simple, no forms library.
   const [simFromEmail, setSimFromEmail] = useState("prospect@example.com");
   const [simFromName, setSimFromName] = useState("Alicia Ford");
   const [simSubject, setSimSubject] = useState("Interested in Pascal Logistics — Meridian Cold Chain");
   const [simBody, setSimBody] = useState("Hi — we ship about 25 loads a month between Blaine and Surrey, and we're looking at a fractional supply-chain option. Can you tell me more about your Tier 1.5 and whether we'd be a fit?\n\nThanks,\nAlicia");
-  const [simulating, setSimulating] = useState(false);
 
-  // Booking & Dispatch simulate state
   const [bkRef, setBkRef] = useState("PL-2405-018");
   const [bkCarrier, setBkCarrier] = useState("SAIA");
   const [bkOrigin, setBkOrigin] = useState("Blaine, WA");
@@ -127,9 +145,7 @@ export function AgentsPage() {
   const [bkEventType, setBkEventType] = useState("Late pickup");
   const [bkEventDetail, setBkEventDetail] = useState("Driver arrived 90 minutes past appointment window; shipper docks closing at 17:00.");
   const [bkClient, setBkClient] = useState("Alicia Ford <alicia@meridiancoldchain.com>");
-  const [bookingSim, setBookingSim] = useState(false);
 
-  // Customs Liaison simulate state
   const [cxRef, setCxRef] = useState("PL-2405-018");
   const [cxBroker, setCxBroker] = useState("Livingston International");
   const [cxDirection, setCxDirection] = useState<"south_to_north" | "north_to_south" | "domestic">("south_to_north");
@@ -137,11 +153,36 @@ export function AgentsPage() {
   const [cxEventDetail, setCxEventDetail] = useState("Pre-entry review before packet forwards to broker.");
   const [cxHasCI, setCxHasCI] = useState(true);
   const [cxHasPL, setCxHasPL] = useState(true);
-  const [cxHasUSMCA, setCxHasUSMCA] = useState(false); // toggle off by default so the USMCA flag fires
+  const [cxHasUSMCA, setCxHasUSMCA] = useState(false);
   const [cxHasPOA, setCxHasPOA] = useState(true);
   const [cxIsDG, setCxIsDG] = useState(false);
   const [cxHasDGP, setCxHasDGP] = useState(true);
-  const [customsSim, setCustomsSim] = useState(false);
+
+  const [vtCarrier, setVtCarrier] = useState("Northland Regional Express");
+  const [vtMC, setVtMC] = useState("MC-1234567");
+  const [vtEventType, setVtEventType] = useState("new_carrier");
+  const [vtAuthorityActive, setVtAuthorityActive] = useState(true);
+  const [vtAutoLiab, setVtAutoLiab] = useState("1000000");
+  const [vtCargo, setVtCargo] = useState("100000");
+  const [vtInsExpires, setVtInsExpires] = useState("2026-11-30");
+  const [vtSmsUnsafe, setVtSmsUnsafe] = useState("42");
+  const [vtSmsHos, setVtSmsHos] = useState("55");
+  const [vtSmsMaint, setVtSmsMaint] = useState("38");
+  const [vtHasW9, setVtHasW9] = useState(true);
+
+  const [clRef, setClRef] = useState("PL-2405-018");
+  const [clMode, setClMode] = useState<"ltl" | "tl" | "ocean" | "air" | "rail" | "unknown">("ltl");
+  const [clCarrier, setClCarrier] = useState("SAIA");
+  const [clClient, setClClient] = useState("Alicia Ford <alicia@meridiancoldchain.com>");
+  const [clEventType, setClEventType] = useState("Damaged pallet on delivery");
+  const [clEventDetail, setClEventDetail] = useState("2 of 4 pallets show crush damage on top layer. Client reported at unload. Photos on hand.");
+  const [clInvoice, setClInvoice] = useState("8400");
+  const [clDamaged, setClDamaged] = useState("3600");
+  const [clHasPhotos, setClHasPhotos] = useState(true);
+  const [clHasBolNote, setClHasBolNote] = useState(false); // toggle off so concealed-damage warning fires
+  const [clHasPod, setClHasPod] = useState(true);
+  const [clDeliveredAt, setClDeliveredAt] = useState(new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10));
+  const [clStage, setClStage] = useState<"intake" | "claim_filed" | "carrier_response" | "negotiation" | "resolved" | "denied" | "escalated">("intake");
 
   async function load() {
     setLoading(true);
@@ -171,7 +212,7 @@ export function AgentsPage() {
         if (draft) {
           patchPayload.payload = {
             ...draft.payload,
-            output: { ...draft.payload.output, draftResponseSubject: editedSubject, draftResponseBody: editedBody },
+            output: { ...(draft.payload as { output: DraftOutputBase }).output, draftResponseSubject: editedSubject, draftResponseBody: editedBody },
           };
         }
       }
@@ -187,71 +228,60 @@ export function AgentsPage() {
 
   function beginEdit(d: DraftRow) {
     setEditingId(d.id);
-    setEditedSubject(d.payload.output.draftResponseSubject);
-    setEditedBody(d.payload.output.draftResponseBody);
+    const o = (d.payload as { output: DraftOutputBase }).output;
+    setEditedSubject(o.draftResponseSubject);
+    setEditedBody(o.draftResponseBody);
   }
 
-  async function simulateChief() {
+  async function simulate() {
     setSimulating(true);
     setError(undefined);
     try {
-      await api.chiefOfStaffSimulate({ fromEmail: simFromEmail, fromName: simFromName, subject: simSubject, body: simBody });
+      if (simTab === "chief") {
+        await api.chiefOfStaffSimulate({ fromEmail: simFromEmail, fromName: simFromName, subject: simSubject, body: simBody });
+      } else if (simTab === "booking") {
+        const match = bkClient.match(/^(.*?)\s*<(.+?)>\s*$/);
+        await api.bookingDispatchSimulate({
+          shipmentRef: bkRef, carrier: bkCarrier, origin: bkOrigin, destination: bkDest, eventType: bkEventType, eventDetail: bkEventDetail,
+          clientName: match ? match[1] : undefined,
+          clientEmail: match ? match[2] : bkClient.includes("@") ? bkClient : undefined,
+        });
+      } else if (simTab === "customs") {
+        await api.customsLiaisonSimulate({
+          shipmentRef: cxRef, direction: cxDirection, brokerName: cxBroker, eventType: cxEventType, eventDetail: cxEventDetail,
+          hasCommercialInvoice: cxHasCI, hasPackingList: cxHasPL, hasUsmcaCert: cxHasUSMCA, hasPoaOnFile: cxHasPOA, isDg: cxIsDG, hasDgPapers: cxHasDGP,
+        });
+      } else if (simTab === "vetting") {
+        await api.carrierVettingSimulate({
+          carrierName: vtCarrier, mcNumber: vtMC, eventType: vtEventType,
+          authorityActive: vtAuthorityActive,
+          insuranceAutoLiabilityUsd: Number(vtAutoLiab) || 0,
+          insuranceCargoUsd: Number(vtCargo) || 0,
+          insuranceExpiresIso: vtInsExpires || undefined,
+          smsUnsafeDriving: vtSmsUnsafe === "" ? undefined : Number(vtSmsUnsafe),
+          smsHoursOfService: vtSmsHos === "" ? undefined : Number(vtSmsHos),
+          smsVehicleMaintenance: vtSmsMaint === "" ? undefined : Number(vtSmsMaint),
+          hasW9OnFile: vtHasW9,
+        });
+      } else if (simTab === "claims") {
+        const match = clClient.match(/^(.*?)\s*<(.+?)>\s*$/);
+        await api.claimsOsdSimulate({
+          shipmentRef: clRef, mode: clMode, carrier: clCarrier,
+          clientName: match ? match[1] : undefined,
+          clientEmail: match ? match[2] : clClient.includes("@") ? clClient : undefined,
+          eventType: clEventType, eventDetail: clEventDetail,
+          invoiceValueUsd: Number(clInvoice) || 0,
+          damagedValueUsd: Number(clDamaged) || 0,
+          hasPhotos: clHasPhotos, hasBolNotation: clHasBolNote, hasSignedPod: clHasPod,
+          deliveredAtIso: clDeliveredAt || undefined,
+          stage: clStage,
+        });
+      }
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Simulation failed.");
     } finally {
       setSimulating(false);
-    }
-  }
-
-  async function simulateBooking() {
-    setBookingSim(true);
-    setError(undefined);
-    try {
-      // Split "Name <email>" into components if provided.
-      const match = bkClient.match(/^(.*?)\s*<(.+?)>\s*$/);
-      const clientName = match ? match[1] : bkClient.includes("@") ? undefined : bkClient || undefined;
-      const clientEmail = match ? match[2] : bkClient.includes("@") ? bkClient : undefined;
-      await api.bookingDispatchSimulate({
-        shipmentRef: bkRef,
-        carrier: bkCarrier,
-        origin: bkOrigin,
-        destination: bkDest,
-        eventType: bkEventType,
-        eventDetail: bkEventDetail,
-        clientName,
-        clientEmail,
-      });
-      await load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Simulation failed.");
-    } finally {
-      setBookingSim(false);
-    }
-  }
-
-  async function simulateCustoms() {
-    setCustomsSim(true);
-    setError(undefined);
-    try {
-      await api.customsLiaisonSimulate({
-        shipmentRef: cxRef,
-        direction: cxDirection,
-        brokerName: cxBroker,
-        eventType: cxEventType,
-        eventDetail: cxEventDetail,
-        hasCommercialInvoice: cxHasCI,
-        hasPackingList: cxHasPL,
-        hasUsmcaCert: cxHasUSMCA,
-        hasPoaOnFile: cxHasPOA,
-        isDg: cxIsDG,
-        hasDgPapers: cxHasDGP,
-      });
-      await load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Simulation failed.");
-    } finally {
-      setCustomsSim(false);
     }
   }
 
@@ -310,88 +340,136 @@ export function AgentsPage() {
           ))}
         </section>
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          {/* Chief of Staff — simulate inbound (test-only) */}
-          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div className="flex items-center gap-2">
-                <Sparkles size={14} className="text-slate-700" />
-                <p className="text-sm font-bold text-slate-900">Simulate inbound email</p>
-              </div>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">Agent 8</span>
-            </div>
-            <div className="space-y-2 p-4">
-              <input value={simFromEmail} onChange={(e) => setSimFromEmail(e.target.value)} placeholder="From email" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <input value={simFromName} onChange={(e) => setSimFromName(e.target.value)} placeholder="From name" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <input value={simSubject} onChange={(e) => setSimSubject(e.target.value)} placeholder="Subject" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <textarea value={simBody} onChange={(e) => setSimBody(e.target.value)} rows={4} placeholder="Body" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <button onClick={simulateChief} disabled={simulating} className="flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
-                {simulating ? <Loader2 size={12} className="animate-spin" /> : <MessageSquarePlus size={12} />}
-                Categorize + draft
-              </button>
-            </div>
-          </section>
+        {/* Tabbed simulate section */}
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap gap-1 border-b border-slate-200 px-3 pt-3">
+            {SIM_TABS.map((t) => {
+              const Icon = t.icon;
+              const active = simTab === t.key;
+              return (
+                <button key={t.key} onClick={() => setSimTab(t.key)} className={`flex items-center gap-1.5 rounded-t-md border-b-2 px-3 py-2 text-xs font-medium transition-colors ${active ? "border-cyan-500 text-slate-900 bg-slate-50" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+                  <Icon size={12} /> {t.label} <span className="font-mono text-[10px] text-slate-400">#{t.slot}</span>
+                </button>
+              );
+            })}
+          </div>
 
-          {/* Booking & Dispatch — simulate milestone (test-only) */}
-          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div className="flex items-center gap-2">
-                <Truck size={14} className="text-slate-700" />
-                <p className="text-sm font-bold text-slate-900">Simulate shipment milestone</p>
-              </div>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">Agent 5</span>
-            </div>
-            <div className="space-y-2 p-4">
-              <input value={bkRef} onChange={(e) => setBkRef(e.target.value)} placeholder="Shipment ref" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <div className="grid grid-cols-2 gap-2">
-                <input value={bkCarrier} onChange={(e) => setBkCarrier(e.target.value)} placeholder="Carrier" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-                <input value={bkEventType} onChange={(e) => setBkEventType(e.target.value)} placeholder="Event type" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-                <input value={bkOrigin} onChange={(e) => setBkOrigin(e.target.value)} placeholder="Origin" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-                <input value={bkDest} onChange={(e) => setBkDest(e.target.value)} placeholder="Destination" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              </div>
-              <textarea value={bkEventDetail} onChange={(e) => setBkEventDetail(e.target.value)} rows={3} placeholder="Event detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <input value={bkClient} onChange={(e) => setBkClient(e.target.value)} placeholder="Client (Name <email>)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <button onClick={simulateBooking} disabled={bookingSim} className="flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
-                {bookingSim ? <Loader2 size={12} className="animate-spin" /> : <MessageSquarePlus size={12} />}
-                Categorize + draft
-              </button>
-            </div>
-          </section>
+          <div className="space-y-2 p-4">
+            {simTab === "chief" && (
+              <>
+                <input value={simFromEmail} onChange={(e) => setSimFromEmail(e.target.value)} placeholder="From email" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <input value={simFromName} onChange={(e) => setSimFromName(e.target.value)} placeholder="From name" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <input value={simSubject} onChange={(e) => setSimSubject(e.target.value)} placeholder="Subject" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <textarea value={simBody} onChange={(e) => setSimBody(e.target.value)} rows={4} placeholder="Body" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              </>
+            )}
+            {simTab === "booking" && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={bkRef} onChange={(e) => setBkRef(e.target.value)} placeholder="Shipment ref" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={bkCarrier} onChange={(e) => setBkCarrier(e.target.value)} placeholder="Carrier" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={bkOrigin} onChange={(e) => setBkOrigin(e.target.value)} placeholder="Origin" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={bkDest} onChange={(e) => setBkDest(e.target.value)} placeholder="Destination" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <input value={bkEventType} onChange={(e) => setBkEventType(e.target.value)} placeholder="Event type" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <textarea value={bkEventDetail} onChange={(e) => setBkEventDetail(e.target.value)} rows={3} placeholder="Event detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <input value={bkClient} onChange={(e) => setBkClient(e.target.value)} placeholder="Client (Name <email>)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              </>
+            )}
+            {simTab === "customs" && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={cxRef} onChange={(e) => setCxRef(e.target.value)} placeholder="Shipment ref" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={cxBroker} onChange={(e) => setCxBroker(e.target.value)} placeholder="Broker on file" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <select value={cxDirection} onChange={(e) => setCxDirection(e.target.value as typeof cxDirection)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                  <option value="south_to_north">Southbound → Canada import</option>
+                  <option value="north_to_south">Northbound → US import</option>
+                  <option value="domestic">Domestic (no customs)</option>
+                </select>
+                <input value={cxEventType} onChange={(e) => setCxEventType(e.target.value)} placeholder="Event type" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <textarea value={cxEventDetail} onChange={(e) => setCxEventDetail(e.target.value)} rows={2} placeholder="Event detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <div className="grid grid-cols-3 gap-1 text-[11px] text-slate-700">
+                  <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasCI} onChange={(e) => setCxHasCI(e.target.checked)} /> Commercial invoice</label>
+                  <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasPL} onChange={(e) => setCxHasPL(e.target.checked)} /> Packing list</label>
+                  <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasUSMCA} onChange={(e) => setCxHasUSMCA(e.target.checked)} /> USMCA cert</label>
+                  <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasPOA} onChange={(e) => setCxHasPOA(e.target.checked)} /> POA on file</label>
+                  <label className="flex items-center gap-1"><input type="checkbox" checked={cxIsDG} onChange={(e) => setCxIsDG(e.target.checked)} /> DG shipment</label>
+                  <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasDGP} onChange={(e) => setCxHasDGP(e.target.checked)} /> DG papers</label>
+                </div>
+              </>
+            )}
+            {simTab === "vetting" && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={vtCarrier} onChange={(e) => setVtCarrier(e.target.value)} placeholder="Carrier name" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={vtMC} onChange={(e) => setVtMC(e.target.value)} placeholder="MC number" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <select value={vtEventType} onChange={(e) => setVtEventType(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                  <option value="new_carrier">New carrier onboarding</option>
+                  <option value="monthly_reverify">Monthly re-verification</option>
+                  <option value="post_tender_audit">Post-tender audit</option>
+                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={vtAutoLiab} onChange={(e) => setVtAutoLiab(e.target.value)} placeholder="Auto liability $" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={vtCargo} onChange={(e) => setVtCargo(e.target.value)} placeholder="Cargo $" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={vtInsExpires} onChange={(e) => setVtInsExpires(e.target.value)} placeholder="Insurance expiry YYYY-MM-DD" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <label className="flex items-center gap-1 text-[11px] text-slate-700"><input type="checkbox" checked={vtAuthorityActive} onChange={(e) => setVtAuthorityActive(e.target.checked)} /> Authority active</label>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <input value={vtSmsUnsafe} onChange={(e) => setVtSmsUnsafe(e.target.value)} placeholder="SMS Unsafe" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={vtSmsHos} onChange={(e) => setVtSmsHos(e.target.value)} placeholder="SMS HOS" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={vtSmsMaint} onChange={(e) => setVtSmsMaint(e.target.value)} placeholder="SMS Maint" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <label className="flex items-center gap-1 text-[11px] text-slate-700"><input type="checkbox" checked={vtHasW9} onChange={(e) => setVtHasW9(e.target.checked)} /> W9 on file</label>
+              </>
+            )}
+            {simTab === "claims" && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={clRef} onChange={(e) => setClRef(e.target.value)} placeholder="Shipment ref" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={clCarrier} onChange={(e) => setClCarrier(e.target.value)} placeholder="Carrier" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={clMode} onChange={(e) => setClMode(e.target.value as typeof clMode)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                    <option value="ltl">LTL</option>
+                    <option value="tl">Truckload</option>
+                    <option value="ocean">Ocean</option>
+                    <option value="air">Air</option>
+                    <option value="rail">Rail</option>
+                  </select>
+                  <select value={clStage} onChange={(e) => setClStage(e.target.value as typeof clStage)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                    <option value="intake">Intake</option>
+                    <option value="claim_filed">Claim filed</option>
+                    <option value="carrier_response">Carrier response</option>
+                    <option value="negotiation">Negotiation</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="denied">Denied</option>
+                    <option value="escalated">Escalated</option>
+                  </select>
+                </div>
+                <input value={clClient} onChange={(e) => setClClient(e.target.value)} placeholder="Client (Name <email>)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <input value={clEventType} onChange={(e) => setClEventType(e.target.value)} placeholder="Event type" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <textarea value={clEventDetail} onChange={(e) => setClEventDetail(e.target.value)} rows={2} placeholder="Event detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <div className="grid grid-cols-3 gap-2">
+                  <input value={clInvoice} onChange={(e) => setClInvoice(e.target.value)} placeholder="Invoice $" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={clDamaged} onChange={(e) => setClDamaged(e.target.value)} placeholder="Damaged $" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={clDeliveredAt} onChange={(e) => setClDeliveredAt(e.target.value)} placeholder="Delivered YYYY-MM-DD" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <div className="grid grid-cols-3 gap-1 text-[11px] text-slate-700">
+                  <label className="flex items-center gap-1"><input type="checkbox" checked={clHasPhotos} onChange={(e) => setClHasPhotos(e.target.checked)} /> Damage photos</label>
+                  <label className="flex items-center gap-1"><input type="checkbox" checked={clHasBolNote} onChange={(e) => setClHasBolNote(e.target.checked)} /> BOL notation</label>
+                  <label className="flex items-center gap-1"><input type="checkbox" checked={clHasPod} onChange={(e) => setClHasPod(e.target.checked)} /> Signed POD</label>
+                </div>
+              </>
+            )}
 
-          {/* Customs Liaison — simulate packet check (test-only) */}
-          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div className="flex items-center gap-2">
-                <ShieldCheck size={14} className="text-slate-700" />
-                <p className="text-sm font-bold text-slate-900">Simulate customs event</p>
-              </div>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">Agent 6</span>
-            </div>
-            <div className="space-y-2 p-4">
-              <input value={cxRef} onChange={(e) => setCxRef(e.target.value)} placeholder="Shipment ref" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <input value={cxBroker} onChange={(e) => setCxBroker(e.target.value)} placeholder="Broker on file" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <select value={cxDirection} onChange={(e) => setCxDirection(e.target.value as typeof cxDirection)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
-                <option value="south_to_north">Southbound → Canada import</option>
-                <option value="north_to_south">Northbound → US import</option>
-                <option value="domestic">Domestic (no customs)</option>
-              </select>
-              <input value={cxEventType} onChange={(e) => setCxEventType(e.target.value)} placeholder="Event type" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <textarea value={cxEventDetail} onChange={(e) => setCxEventDetail(e.target.value)} rows={2} placeholder="Event detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
-              <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-700">
-                <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasCI} onChange={(e) => setCxHasCI(e.target.checked)} /> Commercial invoice</label>
-                <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasPL} onChange={(e) => setCxHasPL(e.target.checked)} /> Packing list</label>
-                <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasUSMCA} onChange={(e) => setCxHasUSMCA(e.target.checked)} /> USMCA cert</label>
-                <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasPOA} onChange={(e) => setCxHasPOA(e.target.checked)} /> POA on file</label>
-                <label className="flex items-center gap-1"><input type="checkbox" checked={cxIsDG} onChange={(e) => setCxIsDG(e.target.checked)} /> DG shipment</label>
-                <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasDGP} onChange={(e) => setCxHasDGP(e.target.checked)} /> DG papers</label>
-              </div>
-              <button onClick={simulateCustoms} disabled={customsSim} className="flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
-                {customsSim ? <Loader2 size={12} className="animate-spin" /> : <MessageSquarePlus size={12} />}
-                Audit packet + draft
-              </button>
-            </div>
-          </section>
-        </div>
+            <button onClick={simulate} disabled={simulating} className="flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
+              {simulating ? <Loader2 size={12} className="animate-spin" /> : <MessageSquarePlus size={12} />}
+              Run simulation → draft to review queue
+            </button>
+          </div>
+        </section>
 
         {/* Draft review queue */}
         <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -408,20 +486,25 @@ export function AgentsPage() {
             <div className="divide-y divide-slate-100">
               {drafts.map((d) => {
                 const ctx = draftContext(d);
+                const output = (d.payload as { output: DraftOutputBase }).output;
                 const customs = d.agent_key === "agent13_customs_liaison" ? (d.payload as CustomsPayload) : undefined;
+                const vetting = d.agent_key === "agent14_carrier_vetting" ? (d.payload as VettingPayload) : undefined;
+                const claims = d.agent_key === "agent15_claims_osd" ? (d.payload as ClaimsPayload) : undefined;
                 return (
                   <div key={d.id} className="px-5 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wide ${PRIORITY_CLASS[d.payload.output.priority]}`}>{d.payload.output.priority}</span>
+                          <span className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wide ${PRIORITY_CLASS[output.priority]}`}>{output.priority}</span>
                           <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">{ctx.label}</span>
                           <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">{d.category?.replace(/_/g, " ") ?? "—"}</span>
-                          {d.payload.output.simulated && <span className="rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-mono text-violet-700">simulated</span>}
+                          {vetting && <span className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wide ${DECISION_CLASS[vetting.output.decision]}`}>{vetting.output.decision}</span>}
+                          {output.simulated && <span className="rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-mono text-violet-700">simulated</span>}
                           <span className="text-[11px] text-slate-500">{ctx.header}</span>
                         </div>
                         <p className="text-sm font-semibold text-slate-900">{ctx.subject}</p>
-                        <p className="mt-1 text-[11px] text-slate-500 italic">Summary: {d.payload.output.summary}</p>
+                        <p className="mt-1 text-[11px] text-slate-500 italic">Summary: {output.summary}</p>
+
                         {customs && customs.output.docPacketIssues && customs.output.docPacketIssues.length > 0 && (
                           <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2">
                             <p className="text-[10px] font-mono uppercase tracking-wide text-rose-700 mb-1">Doc packet issues</p>
@@ -430,9 +513,32 @@ export function AgentsPage() {
                             </ul>
                           </div>
                         )}
-                        {d.payload.output.suggestedActions.length > 0 && (
+                        {vetting && vetting.output.redFlags && vetting.output.redFlags.length > 0 && (
+                          <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2">
+                            <p className="text-[10px] font-mono uppercase tracking-wide text-rose-700 mb-1">Red flags</p>
+                            <ul className="list-disc list-inside text-[11px] text-rose-800 space-y-0.5">
+                              {vetting.output.redFlags.map((s, i) => <li key={i}>{s}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {claims && (
+                          <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5"><span className="font-mono uppercase tracking-wide text-slate-500">Claim value</span> ${claims.output.claimValueUsd.toLocaleString()}</span>
+                            <span className={`rounded-md border px-2 py-0.5 ${claims.output.filingWindowDays < 30 ? "border-rose-200 bg-rose-50 text-rose-800" : "border-slate-200 bg-slate-50 text-slate-700"}`}><span className="font-mono uppercase tracking-wide">Filing window</span> {claims.output.filingWindowDays}d remaining</span>
+                            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5"><span className="font-mono uppercase tracking-wide text-slate-500">Stage</span> {claims.output.stage.replace(/_/g, " ")}</span>
+                            {claims.output.documentationGaps.length > 0 && (
+                              <div className="basis-full rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                                <p className="text-[10px] font-mono uppercase tracking-wide text-amber-700 mb-1">Documentation gaps</p>
+                                <ul className="list-disc list-inside text-[11px] text-amber-800 space-y-0.5">
+                                  {claims.output.documentationGaps.map((s, i) => <li key={i}>{s}</li>)}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {output.suggestedActions.length > 0 && (
                           <ul className="mt-1 list-disc list-inside text-[11px] text-slate-600 space-y-0.5">
-                            {d.payload.output.suggestedActions.map((s, i) => <li key={i}>{s}</li>)}
+                            {output.suggestedActions.map((s, i) => <li key={i}>{s}</li>)}
                           </ul>
                         )}
                       </div>
@@ -447,8 +553,8 @@ export function AgentsPage() {
                         </>
                       ) : (
                         <>
-                          <p className="text-xs font-semibold text-slate-800 mb-1">{d.payload.output.draftResponseSubject}</p>
-                          <pre className="whitespace-pre-wrap text-xs text-slate-700 font-sans leading-relaxed">{d.payload.output.draftResponseBody}</pre>
+                          <p className="text-xs font-semibold text-slate-800 mb-1">{output.draftResponseSubject}</p>
+                          <pre className="whitespace-pre-wrap text-xs text-slate-700 font-sans leading-relaxed">{output.draftResponseBody}</pre>
                         </>
                       )}
                     </div>

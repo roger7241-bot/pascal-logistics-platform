@@ -124,6 +124,37 @@ export const api = {
     clientEmail?: string;
     clientName?: string;
   }) => request<TResult>("/api/operator/agents/customs-liaison/simulate", { method: "POST", body: payload }),
+  carrierVettingSimulate: <TResult = unknown>(payload: {
+    carrierName: string;
+    mcNumber?: string;
+    dotNumber?: string;
+    eventType: string;
+    authorityActive?: boolean;
+    insuranceAutoLiabilityUsd?: number;
+    insuranceCargoUsd?: number;
+    insuranceExpiresIso?: string;
+    smsUnsafeDriving?: number;
+    smsHoursOfService?: number;
+    smsVehicleMaintenance?: number;
+    hasW9OnFile?: boolean;
+  }) => request<TResult>("/api/operator/agents/carrier-vetting/simulate", { method: "POST", body: payload }),
+  claimsOsdSimulate: <TResult = unknown>(payload: {
+    shipmentRef: string;
+    mode: "ltl" | "tl" | "ocean" | "air" | "rail" | "unknown";
+    carrier: string;
+    clientName?: string;
+    clientEmail?: string;
+    eventType: string;
+    eventDetail?: string;
+    invoiceValueUsd?: number;
+    damagedValueUsd?: number;
+    hasPhotos?: boolean;
+    hasBolNotation?: boolean;
+    hasSignedPod?: boolean;
+    deliveredAtIso?: string;
+    stage?: "intake" | "claim_filed" | "carrier_response" | "negotiation" | "resolved" | "denied" | "escalated";
+    claimAmountUsd?: number;
+  }) => request<TResult>("/api/operator/agents/claims-osd/simulate", { method: "POST", body: payload }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>

@@ -1113,18 +1113,24 @@ INSERT INTO agent_registry (agent_key, agent_number, name, role, description, st
   ('agent11_hr',             11, 'HR & Onboarding',            'Back-office',      'Draft offer letters, employee onboarding checklists, policy responses. Deferred until first hire.',                'planned', TRUE)
 ON CONFLICT (agent_key) DO NOTHING;
 
--- Two additional client-facing agents that own the actual freight flow.
--- Inserted as display slots 5 and 6; existing 5-11 renumber to 7-13 below.
--- agent_key names stay stable to avoid orphaning existing draft rows.
+-- Four additional client-facing agents. Insertion order in the freight flow:
+--   Equipment → Carrier Vetting → Booking → Customs → Customer Service → Claims
+-- agent_key names stay stable (creation-order) so existing draft rows stay
+-- linked to their agent. Display order is driven entirely by agent_number.
+-- Slot 13 is intentionally never reused (Roger's preference — 15 total).
 INSERT INTO agent_registry (agent_key, agent_number, name, role, description, status, human_in_loop) VALUES
-  ('agent12_booking_dispatch', 5, 'Booking & Dispatch', 'Client-facing', 'Tenders load to selected carrier, confirms pickup, polls in-transit milestones, flags exceptions, closes out POD.', 'active', TRUE),
-  ('agent13_customs_liaison',  6, 'Customs Liaison',    'Client-facing', 'Coordinates with client''s broker of record (we do not file entries). Confirms doc packet, tracks entry status, flags holds/exams, confirms release.', 'active', TRUE)
+  ('agent12_booking_dispatch', 6, 'Booking & Dispatch', 'Client-facing', 'Tenders load to selected carrier, confirms pickup, polls in-transit milestones, flags exceptions, closes out POD.', 'active', TRUE),
+  ('agent13_customs_liaison',  7, 'Customs Liaison',    'Client-facing', 'Coordinates with client''s broker of record (we do not file entries). Confirms doc packet, tracks entry status, flags holds/exams, confirms release.', 'active', TRUE),
+  ('agent14_carrier_vetting',  5, 'Carrier Vetting & Compliance', 'Client-facing', 'Verifies MC/DOT active, cargo + auto-liability insurance current, SMS BASIC safety scores, W9 on file. Monthly re-verification, insurance-lapse alerts. Blocks tenders to red-flagged carriers until operator override.', 'active', TRUE),
+  ('agent15_claims_osd',       9, 'Claims & OS&D',      'Client-facing', 'Overage / shortage / damage claim intake, valuation, drafting to carrier, follow-through to resolution. Chases past-due claims automatically. Takes warm handoff from Customer Service.', 'active', TRUE)
 ON CONFLICT (agent_key) DO NOTHING;
 
--- Renumber existing agents so display order reflects the actual freight
--- flow: intake → compliance → rate → equipment → booking → customs →
--- client chat, then back-office. Idempotent — safe to re-run.
-UPDATE agent_registry SET agent_number = 7,  updated_at = now() WHERE agent_key = 'agent5_client_chat'      AND agent_number <> 7;
+-- Renumber so display order reflects the actual freight flow:
+--   Sanitizer → Compliance → Rate → Equipment → Carrier Vetting → Booking →
+--   Customs → Customer Service → Claims → Chief of Staff → EA → Finance →
+--   Marketing → Legal → HR
+-- Idempotent — WHERE-guarded to be a no-op if already correct.
+UPDATE agent_registry SET agent_number = 8,  updated_at = now() WHERE agent_key = 'agent5_client_chat'      AND agent_number <> 8;
 
 -- Agent 5 was seeded as "Client Chat" — expand scope to full Customer Service:
 -- WISMO deflection, proactive exception notification, order modifications /
@@ -1137,9 +1143,9 @@ UPDATE agent_registry
        updated_at = now()
  WHERE agent_key = 'agent5_client_chat'
    AND name <> 'Customer Service';
-UPDATE agent_registry SET agent_number = 8,  updated_at = now() WHERE agent_key = 'agent6_chief_of_staff'   AND agent_number <> 8;
-UPDATE agent_registry SET agent_number = 9,  updated_at = now() WHERE agent_key = 'agent7_executive_assist' AND agent_number <> 9;
-UPDATE agent_registry SET agent_number = 10, updated_at = now() WHERE agent_key = 'agent8_finance'          AND agent_number <> 10;
-UPDATE agent_registry SET agent_number = 11, updated_at = now() WHERE agent_key = 'agent9_marketing'        AND agent_number <> 11;
-UPDATE agent_registry SET agent_number = 12, updated_at = now() WHERE agent_key = 'agent10_legal_watcher'   AND agent_number <> 12;
-UPDATE agent_registry SET agent_number = 13, updated_at = now() WHERE agent_key = 'agent11_hr'              AND agent_number <> 13;
+UPDATE agent_registry SET agent_number = 10, updated_at = now() WHERE agent_key = 'agent6_chief_of_staff'   AND agent_number <> 10;
+UPDATE agent_registry SET agent_number = 11, updated_at = now() WHERE agent_key = 'agent7_executive_assist' AND agent_number <> 11;
+UPDATE agent_registry SET agent_number = 12, updated_at = now() WHERE agent_key = 'agent8_finance'          AND agent_number <> 12;
+UPDATE agent_registry SET agent_number = 13, updated_at = now() WHERE agent_key = 'agent9_marketing'        AND agent_number <> 13;
+UPDATE agent_registry SET agent_number = 14, updated_at = now() WHERE agent_key = 'agent10_legal_watcher'   AND agent_number <> 14;
+UPDATE agent_registry SET agent_number = 15, updated_at = now() WHERE agent_key = 'agent11_hr'              AND agent_number <> 15;
