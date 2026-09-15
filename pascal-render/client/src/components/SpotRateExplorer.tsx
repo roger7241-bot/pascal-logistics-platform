@@ -37,10 +37,14 @@ interface ComparedQuote {
 interface CompareResponse {
   incumbent?: IncumbentRate;
   quotes: ComparedQuote[];
+  mode?: "LTL" | "FTL";
   priority1Simulated: boolean;
   priority1Demo?: boolean;
   priority1Error?: string;
 }
+
+const NMFC_CLASSES = ["50", "55", "60", "65", "70", "77.5", "85", "92.5", "100", "110", "125", "150", "175", "200", "250", "300", "400", "500"] as const;
+const TRAILER_TYPES = ["Dry Van", "Reefer", "Flatbed", "Step Deck", "Conestoga", "Straight Truck"] as const;
 
 interface Props {
   onBookRequest?: (payload: { carrierName: string; originZip: string; destinationZip: string; pickupDateIso: string; totalUsd: number }) => void;
@@ -52,6 +56,8 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
   const [pickupDate, setPickupDate] = useState(new Date().toISOString().split("T")[0]);
   const [weightLbs, setWeightLbs] = useState("500");
   const [freightClass, setFreightClass] = useState("150");
+  const [mode, setMode] = useState<"LTL" | "FTL">("LTL");
+  const [trailerType, setTrailerType] = useState<string>("Dry Van");
   const units = "1";
 
   const [result, setResult] = useState<CompareResponse | undefined>();
@@ -70,10 +76,12 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
         originZip: originZip.trim(),
         destinationZip: destinationZip.trim(),
         pickupDateIso: `${pickupDate}T00:00:00Z`,
+        mode,
+        trailerType: mode === "FTL" ? trailerType : undefined,
         items: [
           {
-            freightClass,
-            packagingType: "Pallet",
+            freightClass: mode === "LTL" ? freightClass : "100",
+            packagingType: mode === "FTL" ? "Full Trailer" : "Pallet",
             units: Number(units),
             pieces: Number(units),
             totalWeightLbs: Number(weightLbs),
@@ -125,25 +133,45 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
       </div>
 
       <form onSubmit={run} className="grid grid-cols-2 gap-3 p-5 md:grid-cols-6">
-        <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide md:col-span-1">Origin ZIP
-          <input value={originZip} onChange={(e) => setOriginZip(e.target.value)} required maxLength={10} placeholder="98230" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
+        <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide">Mode
+          <select value={mode} onChange={(e) => setMode(e.target.value as "LTL" | "FTL")} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none">
+            <option value="LTL">LTL — less-than-truckload</option>
+            <option value="FTL">FTL — full truckload</option>
+          </select>
         </label>
-        <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide md:col-span-1">Dest. ZIP
-          <input value={destinationZip} onChange={(e) => setDestinationZip(e.target.value)} required maxLength={10} placeholder="V4A9V4" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
+        <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide">Origin ZIP / Postal
+          <input value={originZip} onChange={(e) => setOriginZip(e.target.value)} required maxLength={10} placeholder="98230 or V4A 9V4" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
         </label>
-        <label className="col-span-2 text-xs font-medium text-slate-600 uppercase tracking-wide md:col-span-1">Pickup date
+        <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide">Dest. ZIP / Postal
+          <input value={destinationZip} onChange={(e) => setDestinationZip(e.target.value)} required maxLength={10} placeholder="60606 or M5V 2E7" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
+        </label>
+        <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide">Pickup date
           <input value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} type="date" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
         </label>
-        <div className="col-span-1 md:col-span-1">
+        <div className="col-span-1">
           <WeightInput valueLbs={weightLbs} onChangeLbs={setWeightLbs} required minLbs={1} placeholder="500" label="Weight" />
         </div>
-        <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide md:col-span-1">Class
-          <input value={freightClass} onChange={(e) => setFreightClass(e.target.value)} placeholder="150" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
-        </label>
-        <div className="col-span-2 flex items-end md:col-span-1">
+        {mode === "LTL" ? (
+          <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide">Freight class
+            <select value={freightClass} onChange={(e) => setFreightClass(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none">
+              {NMFC_CLASSES.map((cls) => (
+                <option key={cls} value={cls}>Class {cls}</option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide">Trailer type
+            <select value={trailerType} onChange={(e) => setTrailerType(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none">
+              {TRAILER_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div className="col-span-2 flex items-end md:col-span-6">
           <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-1.5 rounded-md bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-60">
             {loading ? <Loader2 size={13} className="animate-spin" /> : <ArrowRight size={13} />}
-            Compare
+            Compare {mode} rates
           </button>
         </div>
       </form>

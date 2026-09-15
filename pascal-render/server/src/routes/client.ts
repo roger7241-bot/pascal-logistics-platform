@@ -342,8 +342,9 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
   // is shopping a lane.
   // ==========================================================================
   router.post("/quote-compare", async (req: Request, res: Response) => {
-    const { originZip, destinationZip, pickupDateIso, items } = req.body ?? {};
+    const { originZip, destinationZip, pickupDateIso, items, mode, trailerType } = req.body ?? {};
     const authOrgId = req.authUser?.orgId;
+    const normalizedMode: "LTL" | "FTL" = mode === "FTL" ? "FTL" : "LTL";
 
     if (!authOrgId) {
       return res.status(400).json({ error: "This account has no org on file — contact your Pascal Logistics operator." });
@@ -366,7 +367,7 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     }));
 
     const [p1Response, incumbentResult] = await Promise.all([
-      getPriority1LtlRates({ originZipCode: originZip, destinationZipCode: destinationZip, pickupDate: pickupDateIso, items: normalizedItems }),
+      getPriority1LtlRates({ originZipCode: originZip, destinationZipCode: destinationZip, pickupDate: pickupDateIso, items: normalizedItems, mode: normalizedMode, trailerType: typeof trailerType === "string" ? trailerType : undefined }),
       pool.query(
         `SELECT * FROM client_carrier_rates
           WHERE org_id = $1 AND origin_zip = $2 AND destination_zip = $3
@@ -409,6 +410,7 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     return res.status(200).json({
       incumbent,
       quotes: compared,
+      mode: normalizedMode,
       priority1Simulated: p1Response.simulated,
       priority1Demo: Boolean(p1Response.demo),
       priority1Error: p1Response.error,

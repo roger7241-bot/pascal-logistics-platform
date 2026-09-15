@@ -15,17 +15,28 @@ const PRIORITY1_API_KEY = process.env.PRIORITY1_API_KEY;
 const PRIORITY1_BASE_URL = process.env.PRIORITY1_BASE_URL ?? "https://api.priority1.com";
 const PRIORITY1_DEMO_MODE = (process.env.PRIORITY1_DEMO_MODE ?? "").toLowerCase() === "true";
 
-// Demo carrier roster — real US LTL carrier names, per-carrier price
-// multipliers around a computed lane base. Used only when
+// Demo carrier rosters — real US carrier names, per-carrier price
+// multipliers around a computed lane base. Separate LTL and FTL rosters
+// because they're genuinely different markets: LTL is class-based
+// pricing through a handful of national carriers; FTL is per-mile
+// pricing through both mega-fleets and independents. Used only when
 // PRIORITY1_DEMO_MODE is on AND PRIORITY1_API_KEY is missing, so a real
 // key always beats demo mode (impossible to leave demo on by accident
 // once you've wired a live vendor).
-const DEMO_CARRIERS: Array<{ carrierName: string; serviceLevel: string; transitDays: number; multiplier: number }> = [
+const DEMO_CARRIERS_LTL: Array<{ carrierName: string; serviceLevel: string; transitDays: number; multiplier: number }> = [
   { carrierName: "SAIA Motor Freight", serviceLevel: "Standard LTL", transitDays: 3, multiplier: 0.88 },
   { carrierName: "XPO Logistics", serviceLevel: "Standard LTL", transitDays: 3, multiplier: 0.92 },
   { carrierName: "Estes Express", serviceLevel: "Standard LTL", transitDays: 4, multiplier: 0.96 },
   { carrierName: "R+L Carriers", serviceLevel: "Standard LTL", transitDays: 3, multiplier: 1.02 },
   { carrierName: "Old Dominion", serviceLevel: "Guaranteed LTL", transitDays: 2, multiplier: 1.14 },
+];
+
+const DEMO_CARRIERS_FTL: Array<{ carrierName: string; serviceLevel: string; transitDays: number; multiplier: number }> = [
+  { carrierName: "Landstar System", serviceLevel: "Dry Van FTL", transitDays: 3, multiplier: 0.90 },
+  { carrierName: "Werner Enterprises", serviceLevel: "Dry Van FTL", transitDays: 3, multiplier: 0.95 },
+  { carrierName: "Schneider National", serviceLevel: "Dry Van FTL", transitDays: 2, multiplier: 1.00 },
+  { carrierName: "Knight-Swift Transportation", serviceLevel: "Dry Van FTL", transitDays: 2, multiplier: 1.06 },
+  { carrierName: "J.B. Hunt", serviceLevel: "Expedited FTL", transitDays: 1, multiplier: 1.18 },
 ];
 
 export interface Priority1LineItem {
@@ -41,11 +52,15 @@ export interface Priority1LineItem {
   hazmat?: boolean;
 }
 
+export type Priority1Mode = "LTL" | "FTL";
+
 export interface Priority1RateRequest {
   originZipCode: string;
   destinationZipCode: string;
   pickupDate: string;
   items: Priority1LineItem[];
+  mode?: Priority1Mode; // defaults to LTL when not specified
+  trailerType?: string; // FTL only: "Dry Van" | "Reefer" | "Flatbed" | ...
 }
 
 export interface Priority1RateQuote {
@@ -85,18 +100,33 @@ function laneDistanceScore(originZip: string, destinationZip: string): number {
 }
 
 function buildDemoQuotes(request: Priority1RateRequest): Priority1RateQuote[] {
+  const mode: Priority1Mode = request.mode ?? "LTL";
   const totalWeight = request.items.reduce((sum, it) => sum + it.totalWeightLbs, 0) || 100;
-  const avgClass = request.items.reduce((sum, it) => sum + (Number(it.freightClass) || 100), 0) / request.items.length;
   const distanceScore = laneDistanceScore(request.originZipCode, request.destinationZipCode);
-
-  // Base = fixed floor + weight component + distance component + class component.
-  // Numbers tuned to land in a realistic $500-$2500 range for typical LTL loads.
-  const base = 220 + (totalWeight * 0.85) + (distanceScore * 12) + (avgClass * 1.4);
   const pickup = new Date(request.pickupDate);
   const expiration = new Date(pickup.getTime());
   expiration.setDate(expiration.getDate() + 14);
 
-  return DEMO_CARRIERS.map((c) => {
+  let base: number;
+  let roster: typeof DEMO_CARRIERS_LTL;
+
+  if (mode === "FTL") {
+    // FTL pricing is per-mile-dominant, no freight class factor. Higher
+    // floor since you're paying for the whole trailer regardless of load.
+    // Distance score × 55 approximates ~$3-5/mi × 350mi per SCF step.
+    // Small weight adder covers heavy/overweight surcharges.
+    base = 1400 + (distanceScore * 55) + Math.max(0, totalWeight - 20000) * 0.02;
+    roster = DEMO_CARRIERS_FTL;
+  } else {
+    // LTL pricing scales with freight class + weight + distance. Same
+    // formula as the original, tuned to land in $500-$2500 for typical
+    // LTL loads.
+    const avgClass = request.items.reduce((sum, it) => sum + (Number(it.freightClass) || 100), 0) / request.items.length;
+    base = 220 + (totalWeight * 0.85) + (distanceScore * 12) + (avgClass * 1.4);
+    roster = DEMO_CARRIERS_LTL;
+  }
+
+  return roster.map((c) => {
     const total = Math.round(base * c.multiplier * 100) / 100;
     const fuelSurcharge = Math.round(total * 0.18 * 100) / 100;
     return {
@@ -108,7 +138,7 @@ function buildDemoQuotes(request: Priority1RateRequest): Priority1RateQuote[] {
       fuelSurchargeUsd: fuelSurcharge,
       accessorialsUsd: 0,
       expirationDateIso: expiration.toISOString(),
-      quoteReference: `DEMO-${c.carrierName.split(" ")[0].toUpperCase()}-${Date.now().toString(36).slice(-6)}`,
+      quoteReference: `DEMO-${mode}-${c.carrierName.split(" ")[0].toUpperCase()}-${Date.now().toString(36).slice(-6)}`,
     };
   });
 }

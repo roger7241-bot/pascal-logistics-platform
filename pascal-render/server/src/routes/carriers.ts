@@ -270,10 +270,11 @@ export function createCarriersRouter(telemetryService: BorderTelemetryService): 
   // returns Priority1 rates alone with no savings math, not an error.
   // ==========================================================================
   router.post("/quote-compare", async (req: Request, res: Response) => {
-    const { orgId, originZip, destinationZip, pickupDateIso, items } = req.body ?? {};
+    const { orgId, originZip, destinationZip, pickupDateIso, items, mode, trailerType } = req.body ?? {};
     if (!orgId || !originZip || !destinationZip || !pickupDateIso || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "orgId, originZip, destinationZip, pickupDateIso, and items[] are required." });
     }
+    const normalizedMode: "LTL" | "FTL" = mode === "FTL" ? "FTL" : "LTL";
 
     const normalizedItems: Priority1LineItem[] = items.map((it: Record<string, unknown>) => ({
       freightClass: String(it.freightClass ?? "150"),
@@ -289,7 +290,7 @@ export function createCarriersRouter(telemetryService: BorderTelemetryService): 
     }));
 
     const [p1Response, incumbentResult] = await Promise.all([
-      getPriority1LtlRates({ originZipCode: originZip, destinationZipCode: destinationZip, pickupDate: pickupDateIso, items: normalizedItems }),
+      getPriority1LtlRates({ originZipCode: originZip, destinationZipCode: destinationZip, pickupDate: pickupDateIso, items: normalizedItems, mode: normalizedMode, trailerType: typeof trailerType === "string" ? trailerType : undefined }),
       pool.query(
         `SELECT * FROM client_carrier_rates
           WHERE org_id = $1 AND origin_zip = $2 AND destination_zip = $3
@@ -314,6 +315,7 @@ export function createCarriersRouter(telemetryService: BorderTelemetryService): 
     return res.status(200).json({
       incumbent,
       quotes: compared,
+      mode: normalizedMode,
       priority1Simulated: p1Response.simulated,
       priority1Demo: Boolean(p1Response.demo),
       priority1Error: p1Response.error,

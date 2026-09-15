@@ -37,10 +37,14 @@ interface ComparedQuote {
 interface CompareResponse {
   incumbent?: IncumbentRate;
   quotes: ComparedQuote[];
+  mode?: "LTL" | "FTL";
   priority1Simulated: boolean;
   priority1Demo?: boolean;
   priority1Error?: string;
 }
+
+const NMFC_CLASSES = ["50", "55", "60", "65", "70", "77.5", "85", "92.5", "100", "110", "125", "150", "175", "200", "250", "300", "400", "500"] as const;
+const TRAILER_TYPES = ["Dry Van", "Reefer", "Flatbed", "Step Deck", "Conestoga", "Straight Truck"] as const;
 
 interface Props {
   orgId: string;
@@ -57,6 +61,8 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
   const [freightClass, setFreightClass] = useState("150");
   const [packagingType, setPackagingType] = useState("Pallet");
   const [units, setUnits] = useState("1");
+  const [mode, setMode] = useState<"LTL" | "FTL">("LTL");
+  const [trailerType, setTrailerType] = useState<string>("Dry Van");
 
   const [result, setResult] = useState<CompareResponse | undefined>();
   const [loading, setLoading] = useState(false);
@@ -76,10 +82,12 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
         originZip: originZip.trim(),
         destinationZip: destinationZip.trim(),
         pickupDateIso: `${pickupDate}T00:00:00Z`,
+        mode,
+        trailerType: mode === "FTL" ? trailerType : undefined,
         items: [
           {
-            freightClass,
-            packagingType,
+            freightClass: mode === "LTL" ? freightClass : "100",
+            packagingType: mode === "FTL" ? "Full Trailer" : packagingType,
             units: Number(units),
             pieces: Number(units),
             totalWeightLbs: Number(weightLbs),
@@ -106,12 +114,19 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
 
       <form onSubmit={runComparison} className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
         <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-          Origin ZIP
-          <input value={originZip} onChange={(e) => setOriginZip(e.target.value)} required maxLength={10} placeholder="98230" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none" />
+          Mode
+          <select value={mode} onChange={(e) => setMode(e.target.value as "LTL" | "FTL")} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none">
+            <option value="LTL">LTL — less-than-truckload</option>
+            <option value="FTL">FTL — full truckload</option>
+          </select>
         </label>
         <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-          Destination ZIP
-          <input value={destinationZip} onChange={(e) => setDestinationZip(e.target.value)} required maxLength={10} placeholder="V4A 9V4" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none" />
+          Origin ZIP / Postal
+          <input value={originZip} onChange={(e) => setOriginZip(e.target.value)} required maxLength={10} placeholder="98230 or V4A 9V4" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none" />
+        </label>
+        <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+          Destination ZIP / Postal
+          <input value={destinationZip} onChange={(e) => setDestinationZip(e.target.value)} required maxLength={10} placeholder="60606 or M5V 2E7" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none" />
         </label>
         <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
           Pickup date
@@ -120,30 +135,47 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
         <div>
           <WeightInput valueLbs={weightLbs} onChangeLbs={setWeightLbs} required minLbs={1} placeholder="275" label="Total weight" />
         </div>
-        <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-          Freight class
-          <input value={freightClass} onChange={(e) => setFreightClass(e.target.value)} placeholder="150" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none" />
-        </label>
-        <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-          Units / Pieces
-          <input value={units} onChange={(e) => setUnits(e.target.value)} type="number" min="1" placeholder="1" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none" />
-        </label>
-        <div className="md:col-span-3">
-          <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-            Packaging type
-            <select value={packagingType} onChange={(e) => setPackagingType(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none">
-              <option>Pallet</option>
-              <option>Skid</option>
-              <option>Crate</option>
-              <option>Drum</option>
-              <option>Box</option>
+        {mode === "LTL" ? (
+          <>
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+              Freight class
+              <select value={freightClass} onChange={(e) => setFreightClass(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none">
+                {NMFC_CLASSES.map((cls) => (
+                  <option key={cls} value={cls}>Class {cls}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+              Units / Pieces
+              <input value={units} onChange={(e) => setUnits(e.target.value)} type="number" min="1" placeholder="1" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none" />
+            </label>
+            <div className="md:col-span-3">
+              <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+                Packaging type
+                <select value={packagingType} onChange={(e) => setPackagingType(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none">
+                  <option>Pallet</option>
+                  <option>Skid</option>
+                  <option>Crate</option>
+                  <option>Drum</option>
+                  <option>Box</option>
+                </select>
+              </label>
+            </div>
+          </>
+        ) : (
+          <label className="md:col-span-2 text-xs font-medium text-slate-600 uppercase tracking-wide">
+            Trailer type
+            <select value={trailerType} onChange={(e) => setTrailerType(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none">
+              {TRAILER_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
             </select>
           </label>
-        </div>
+        )}
         <div className="md:col-span-3 flex justify-end">
           <button type="submit" disabled={loading} className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-            Compare rates
+            Compare {mode} rates
           </button>
         </div>
       </form>
