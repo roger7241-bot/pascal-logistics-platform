@@ -1,15 +1,16 @@
 // ============================================================================
 // AgentsPage
 // Operator observability + review surface for every AI agent in the org.
-// Grid at top shows all 11 agents (5 client-facing already live + 6
-// back-office: Chief of Staff is live, others planned). Chief of Staff
-// review inbox below shows drafts awaiting Roger's sign-off — send,
-// edit, reject, archive. Includes a small "simulate an inbound email"
-// tool so the flow is testable before live inbox integration.
+// Grid at top shows all 13 agents (7 client-facing + 6 back-office).
+// Three simulate panels — Chief of Staff (email), Booking & Dispatch
+// (milestone), Customs Liaison (packet check + entry event) — inject test
+// drafts. Review queue below shows every draft awaiting Roger's sign-off
+// with subject, summary, suggested actions, editable response, and four
+// actions: Edit, Archive, Reject, Send.
 // ============================================================================
 
 import { useEffect, useState } from "react";
-import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle } from "lucide-react";
+import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api, ApiError } from "../config/api";
 
@@ -26,6 +27,29 @@ interface AgentRow {
   pendingDrafts: number;
 }
 
+// Payload shapes differ per agent — this is the discriminated union.
+interface ChiefPayload {
+  inbound: { fromEmail: string; fromName?: string; subject: string; body: string };
+  output: DraftOutput;
+}
+interface BookingPayload {
+  event: { shipmentRef: string; carrier: string; origin: string; destination: string; eventType: string; eventDetail: string; clientEmail?: string; clientName?: string };
+  output: DraftOutput & { recipientEmail?: string };
+}
+interface CustomsPayload {
+  event: { shipmentRef: string; direction: string; brokerName: string; brokerEmail?: string; eventType: string; eventDetail: string; entryNumber?: string; clientName?: string };
+  output: DraftOutput & { docPacketIssues: string[]; recipientRole: "broker" | "client" | "internal" };
+}
+interface DraftOutput {
+  category: string;
+  priority: "urgent" | "normal" | "low";
+  summary: string;
+  suggestedActions: string[];
+  draftResponseSubject: string;
+  draftResponseBody: string;
+  simulated: boolean;
+}
+
 interface DraftRow {
   id: string;
   agent_key: string;
@@ -33,18 +57,7 @@ interface DraftRow {
   category: string | null;
   subject: string | null;
   source_ref: string | null;
-  payload: {
-    inbound: { fromEmail: string; fromName?: string; subject: string; body: string };
-    output: {
-      category: string;
-      priority: "urgent" | "normal" | "low";
-      summary: string;
-      suggestedActions: string[];
-      draftResponseSubject: string;
-      draftResponseBody: string;
-      simulated: boolean;
-    };
-  };
+  payload: ChiefPayload | BookingPayload | CustomsPayload;
   status: string;
   created_at: string;
 }
@@ -56,11 +69,38 @@ const STATUS_CLASS: Record<AgentRow["status"], string> = {
   deprecated: "bg-rose-100 text-rose-700",
 };
 
-const PRIORITY_CLASS: Record<DraftRow["payload"]["output"]["priority"], string> = {
+const PRIORITY_CLASS: Record<DraftOutput["priority"], string> = {
   urgent: "bg-rose-100 text-rose-700 border-rose-200",
   normal: "bg-slate-100 text-slate-600 border-slate-200",
   low: "bg-sky-50 text-sky-700 border-sky-200",
 };
+
+// Extract a compact "context line" per draft type so the review card
+// stays uniform even though payload shapes differ.
+function draftContext(d: DraftRow): { label: string; header: string; subject: string } {
+  if (d.agent_key === "agent12_booking_dispatch") {
+    const p = d.payload as BookingPayload;
+    return {
+      label: "Booking & Dispatch",
+      header: `${p.event.carrier} · ${p.event.origin} → ${p.event.destination}`,
+      subject: `${p.event.shipmentRef}: ${p.event.eventType}`,
+    };
+  }
+  if (d.agent_key === "agent13_customs_liaison") {
+    const p = d.payload as CustomsPayload;
+    return {
+      label: "Customs Liaison",
+      header: `Broker: ${p.event.brokerName}${p.event.entryNumber ? ` · Entry ${p.event.entryNumber}` : ""}`,
+      subject: `${p.event.shipmentRef}: ${p.event.eventType}`,
+    };
+  }
+  const p = d.payload as ChiefPayload;
+  return {
+    label: "Chief of Staff",
+    header: `from ${p.inbound.fromName ? `${p.inbound.fromName} <${p.inbound.fromEmail}>` : p.inbound.fromEmail}`,
+    subject: p.inbound.subject,
+  };
+}
 
 export function AgentsPage() {
   const [agents, setAgents] = useState<AgentRow[]>([]);
@@ -72,11 +112,36 @@ export function AgentsPage() {
   const [editedSubject, setEditedSubject] = useState("");
   const [editedBody, setEditedBody] = useState("");
 
+  // Chief of Staff simulate state
   const [simFromEmail, setSimFromEmail] = useState("prospect@example.com");
   const [simFromName, setSimFromName] = useState("Alicia Ford");
   const [simSubject, setSimSubject] = useState("Interested in Pascal Logistics — Meridian Cold Chain");
   const [simBody, setSimBody] = useState("Hi — we ship about 25 loads a month between Blaine and Surrey, and we're looking at a fractional supply-chain option. Can you tell me more about your Tier 1.5 and whether we'd be a fit?\n\nThanks,\nAlicia");
   const [simulating, setSimulating] = useState(false);
+
+  // Booking & Dispatch simulate state
+  const [bkRef, setBkRef] = useState("PL-2405-018");
+  const [bkCarrier, setBkCarrier] = useState("SAIA");
+  const [bkOrigin, setBkOrigin] = useState("Blaine, WA");
+  const [bkDest, setBkDest] = useState("Toronto, ON");
+  const [bkEventType, setBkEventType] = useState("Late pickup");
+  const [bkEventDetail, setBkEventDetail] = useState("Driver arrived 90 minutes past appointment window; shipper docks closing at 17:00.");
+  const [bkClient, setBkClient] = useState("Alicia Ford <alicia@meridiancoldchain.com>");
+  const [bookingSim, setBookingSim] = useState(false);
+
+  // Customs Liaison simulate state
+  const [cxRef, setCxRef] = useState("PL-2405-018");
+  const [cxBroker, setCxBroker] = useState("Livingston International");
+  const [cxDirection, setCxDirection] = useState<"south_to_north" | "north_to_south" | "domestic">("south_to_north");
+  const [cxEventType, setCxEventType] = useState("Docs check");
+  const [cxEventDetail, setCxEventDetail] = useState("Pre-entry review before packet forwards to broker.");
+  const [cxHasCI, setCxHasCI] = useState(true);
+  const [cxHasPL, setCxHasPL] = useState(true);
+  const [cxHasUSMCA, setCxHasUSMCA] = useState(false); // toggle off by default so the USMCA flag fires
+  const [cxHasPOA, setCxHasPOA] = useState(true);
+  const [cxIsDG, setCxIsDG] = useState(false);
+  const [cxHasDGP, setCxHasDGP] = useState(true);
+  const [customsSim, setCustomsSim] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -126,8 +191,9 @@ export function AgentsPage() {
     setEditedBody(d.payload.output.draftResponseBody);
   }
 
-  async function simulate() {
+  async function simulateChief() {
     setSimulating(true);
+    setError(undefined);
     try {
       await api.chiefOfStaffSimulate({ fromEmail: simFromEmail, fromName: simFromName, subject: simSubject, body: simBody });
       await load();
@@ -135,6 +201,57 @@ export function AgentsPage() {
       setError(err instanceof ApiError ? err.message : "Simulation failed.");
     } finally {
       setSimulating(false);
+    }
+  }
+
+  async function simulateBooking() {
+    setBookingSim(true);
+    setError(undefined);
+    try {
+      // Split "Name <email>" into components if provided.
+      const match = bkClient.match(/^(.*?)\s*<(.+?)>\s*$/);
+      const clientName = match ? match[1] : bkClient.includes("@") ? undefined : bkClient || undefined;
+      const clientEmail = match ? match[2] : bkClient.includes("@") ? bkClient : undefined;
+      await api.bookingDispatchSimulate({
+        shipmentRef: bkRef,
+        carrier: bkCarrier,
+        origin: bkOrigin,
+        destination: bkDest,
+        eventType: bkEventType,
+        eventDetail: bkEventDetail,
+        clientName,
+        clientEmail,
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Simulation failed.");
+    } finally {
+      setBookingSim(false);
+    }
+  }
+
+  async function simulateCustoms() {
+    setCustomsSim(true);
+    setError(undefined);
+    try {
+      await api.customsLiaisonSimulate({
+        shipmentRef: cxRef,
+        direction: cxDirection,
+        brokerName: cxBroker,
+        eventType: cxEventType,
+        eventDetail: cxEventDetail,
+        hasCommercialInvoice: cxHasCI,
+        hasPackingList: cxHasPL,
+        hasUsmcaCert: cxHasUSMCA,
+        hasPoaOnFile: cxHasPOA,
+        isDg: cxIsDG,
+        hasDgPapers: cxHasDGP,
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Simulation failed.");
+    } finally {
+      setCustomsSim(false);
     }
   }
 
@@ -193,36 +310,88 @@ export function AgentsPage() {
           ))}
         </section>
 
-        {/* Chief of Staff — simulate inbound (test-only) */}
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <div className="flex items-center gap-2">
-              <Sparkles size={14} className="text-slate-700" />
-              <p className="text-sm font-bold text-slate-900">Simulate an inbound email (test-only)</p>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">Chief of Staff · Agent 6</span>
+        <div className="grid gap-4 lg:grid-cols-3">
+          {/* Chief of Staff — simulate inbound (test-only) */}
+          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <Sparkles size={14} className="text-slate-700" />
+                <p className="text-sm font-bold text-slate-900">Simulate inbound email</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">Agent 8</span>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 p-5">
-            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">From email
-              <input value={simFromEmail} onChange={(e) => setSimFromEmail(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
-            </label>
-            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">From name
-              <input value={simFromName} onChange={(e) => setSimFromName(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
-            </label>
-            <label className="col-span-2 text-xs font-medium text-slate-600 uppercase tracking-wide">Subject
-              <input value={simSubject} onChange={(e) => setSimSubject(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
-            </label>
-            <label className="col-span-2 text-xs font-medium text-slate-600 uppercase tracking-wide">Body
-              <textarea value={simBody} onChange={(e) => setSimBody(e.target.value)} rows={4} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
-            </label>
-            <div className="col-span-2 flex justify-end">
-              <button onClick={simulate} disabled={simulating} className="flex items-center gap-1.5 rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
+            <div className="space-y-2 p-4">
+              <input value={simFromEmail} onChange={(e) => setSimFromEmail(e.target.value)} placeholder="From email" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <input value={simFromName} onChange={(e) => setSimFromName(e.target.value)} placeholder="From name" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <input value={simSubject} onChange={(e) => setSimSubject(e.target.value)} placeholder="Subject" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <textarea value={simBody} onChange={(e) => setSimBody(e.target.value)} rows={4} placeholder="Body" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <button onClick={simulateChief} disabled={simulating} className="flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
                 {simulating ? <Loader2 size={12} className="animate-spin" /> : <MessageSquarePlus size={12} />}
-                Categorize + draft response
+                Categorize + draft
               </button>
             </div>
-          </div>
-        </section>
+          </section>
+
+          {/* Booking & Dispatch — simulate milestone (test-only) */}
+          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <Truck size={14} className="text-slate-700" />
+                <p className="text-sm font-bold text-slate-900">Simulate shipment milestone</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">Agent 5</span>
+            </div>
+            <div className="space-y-2 p-4">
+              <input value={bkRef} onChange={(e) => setBkRef(e.target.value)} placeholder="Shipment ref" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <div className="grid grid-cols-2 gap-2">
+                <input value={bkCarrier} onChange={(e) => setBkCarrier(e.target.value)} placeholder="Carrier" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <input value={bkEventType} onChange={(e) => setBkEventType(e.target.value)} placeholder="Event type" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <input value={bkOrigin} onChange={(e) => setBkOrigin(e.target.value)} placeholder="Origin" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <input value={bkDest} onChange={(e) => setBkDest(e.target.value)} placeholder="Destination" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              </div>
+              <textarea value={bkEventDetail} onChange={(e) => setBkEventDetail(e.target.value)} rows={3} placeholder="Event detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <input value={bkClient} onChange={(e) => setBkClient(e.target.value)} placeholder="Client (Name <email>)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <button onClick={simulateBooking} disabled={bookingSim} className="flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
+                {bookingSim ? <Loader2 size={12} className="animate-spin" /> : <MessageSquarePlus size={12} />}
+                Categorize + draft
+              </button>
+            </div>
+          </section>
+
+          {/* Customs Liaison — simulate packet check (test-only) */}
+          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={14} className="text-slate-700" />
+                <p className="text-sm font-bold text-slate-900">Simulate customs event</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">Agent 6</span>
+            </div>
+            <div className="space-y-2 p-4">
+              <input value={cxRef} onChange={(e) => setCxRef(e.target.value)} placeholder="Shipment ref" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <input value={cxBroker} onChange={(e) => setCxBroker(e.target.value)} placeholder="Broker on file" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <select value={cxDirection} onChange={(e) => setCxDirection(e.target.value as typeof cxDirection)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                <option value="south_to_north">Southbound → Canada import</option>
+                <option value="north_to_south">Northbound → US import</option>
+                <option value="domestic">Domestic (no customs)</option>
+              </select>
+              <input value={cxEventType} onChange={(e) => setCxEventType(e.target.value)} placeholder="Event type" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <textarea value={cxEventDetail} onChange={(e) => setCxEventDetail(e.target.value)} rows={2} placeholder="Event detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-700">
+                <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasCI} onChange={(e) => setCxHasCI(e.target.checked)} /> Commercial invoice</label>
+                <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasPL} onChange={(e) => setCxHasPL(e.target.checked)} /> Packing list</label>
+                <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasUSMCA} onChange={(e) => setCxHasUSMCA(e.target.checked)} /> USMCA cert</label>
+                <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasPOA} onChange={(e) => setCxHasPOA(e.target.checked)} /> POA on file</label>
+                <label className="flex items-center gap-1"><input type="checkbox" checked={cxIsDG} onChange={(e) => setCxIsDG(e.target.checked)} /> DG shipment</label>
+                <label className="flex items-center gap-1"><input type="checkbox" checked={cxHasDGP} onChange={(e) => setCxHasDGP(e.target.checked)} /> DG papers</label>
+              </div>
+              <button onClick={simulateCustoms} disabled={customsSim} className="flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
+                {customsSim ? <Loader2 size={12} className="animate-spin" /> : <MessageSquarePlus size={12} />}
+                Audit packet + draft
+              </button>
+            </div>
+          </section>
+        </div>
 
         {/* Draft review queue */}
         <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -237,61 +406,74 @@ export function AgentsPage() {
             <p className="px-5 py-8 text-center text-xs text-slate-500">No drafts waiting on your review.</p>
           ) : (
             <div className="divide-y divide-slate-100">
-              {drafts.map((d) => (
-                <div key={d.id} className="px-5 py-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wide ${PRIORITY_CLASS[d.payload.output.priority]}`}>{d.payload.output.priority}</span>
-                        <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">{d.category?.replace(/_/g, " ") ?? "—"}</span>
-                        {d.payload.output.simulated && <span className="rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-mono text-violet-700">simulated</span>}
-                        <span className="text-[11px] text-slate-500">from {d.payload.inbound.fromName ? `${d.payload.inbound.fromName} <${d.payload.inbound.fromEmail}>` : d.payload.inbound.fromEmail}</span>
+              {drafts.map((d) => {
+                const ctx = draftContext(d);
+                const customs = d.agent_key === "agent13_customs_liaison" ? (d.payload as CustomsPayload) : undefined;
+                return (
+                  <div key={d.id} className="px-5 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wide ${PRIORITY_CLASS[d.payload.output.priority]}`}>{d.payload.output.priority}</span>
+                          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">{ctx.label}</span>
+                          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">{d.category?.replace(/_/g, " ") ?? "—"}</span>
+                          {d.payload.output.simulated && <span className="rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-mono text-violet-700">simulated</span>}
+                          <span className="text-[11px] text-slate-500">{ctx.header}</span>
+                        </div>
+                        <p className="text-sm font-semibold text-slate-900">{ctx.subject}</p>
+                        <p className="mt-1 text-[11px] text-slate-500 italic">Summary: {d.payload.output.summary}</p>
+                        {customs && customs.output.docPacketIssues && customs.output.docPacketIssues.length > 0 && (
+                          <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2">
+                            <p className="text-[10px] font-mono uppercase tracking-wide text-rose-700 mb-1">Doc packet issues</p>
+                            <ul className="list-disc list-inside text-[11px] text-rose-800 space-y-0.5">
+                              {customs.output.docPacketIssues.map((s, i) => <li key={i}>{s}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {d.payload.output.suggestedActions.length > 0 && (
+                          <ul className="mt-1 list-disc list-inside text-[11px] text-slate-600 space-y-0.5">
+                            {d.payload.output.suggestedActions.map((s, i) => <li key={i}>{s}</li>)}
+                          </ul>
+                        )}
                       </div>
-                      <p className="text-sm font-semibold text-slate-900">{d.payload.inbound.subject}</p>
-                      <p className="mt-1 text-[11px] text-slate-500 italic">Agent 6 summary: {d.payload.output.summary}</p>
-                      {d.payload.output.suggestedActions.length > 0 && (
-                        <ul className="mt-1 list-disc list-inside text-[11px] text-slate-600 space-y-0.5">
-                          {d.payload.output.suggestedActions.map((s, i) => <li key={i}>{s}</li>)}
-                        </ul>
+                    </div>
+
+                    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-[10px] font-mono uppercase tracking-wide text-slate-500 mb-2">Draft response</p>
+                      {editingId === d.id ? (
+                        <>
+                          <input value={editedSubject} onChange={(e) => setEditedSubject(e.target.value)} className="mb-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Subject" />
+                          <textarea value={editedBody} onChange={(e) => setEditedBody(e.target.value)} rows={6} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Body" />
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs font-semibold text-slate-800 mb-1">{d.payload.output.draftResponseSubject}</p>
+                          <pre className="whitespace-pre-wrap text-xs text-slate-700 font-sans leading-relaxed">{d.payload.output.draftResponseBody}</pre>
+                        </>
                       )}
                     </div>
-                  </div>
 
-                  <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-[10px] font-mono uppercase tracking-wide text-slate-500 mb-2">Draft response</p>
-                    {editingId === d.id ? (
-                      <>
-                        <input value={editedSubject} onChange={(e) => setEditedSubject(e.target.value)} className="mb-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Subject" />
-                        <textarea value={editedBody} onChange={(e) => setEditedBody(e.target.value)} rows={6} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Body" />
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-xs font-semibold text-slate-800 mb-1">{d.payload.output.draftResponseSubject}</p>
-                        <pre className="whitespace-pre-wrap text-xs text-slate-700 font-sans leading-relaxed">{d.payload.output.draftResponseBody}</pre>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap justify-end gap-2">
-                    {editingId === d.id ? (
-                      <button onClick={() => setEditingId(undefined)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">Cancel edit</button>
-                    ) : (
-                      <button onClick={() => beginEdit(d)} disabled={actioning === d.id} className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60">
-                        <Edit3 size={12} /> Edit
+                    <div className="mt-3 flex flex-wrap justify-end gap-2">
+                      {editingId === d.id ? (
+                        <button onClick={() => setEditingId(undefined)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">Cancel edit</button>
+                      ) : (
+                        <button onClick={() => beginEdit(d)} disabled={actioning === d.id} className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60">
+                          <Edit3 size={12} /> Edit
+                        </button>
+                      )}
+                      <button onClick={() => respond(d.id, "archived")} disabled={actioning === d.id} className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60">
+                        <Archive size={12} /> Archive
                       </button>
-                    )}
-                    <button onClick={() => respond(d.id, "archived")} disabled={actioning === d.id} className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60">
-                      <Archive size={12} /> Archive
-                    </button>
-                    <button onClick={() => respond(d.id, "rejected")} disabled={actioning === d.id} className="flex items-center gap-1 rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60">
-                      <XCircle size={12} /> Reject
-                    </button>
-                    <button onClick={() => respond(d.id, "sent")} disabled={actioning === d.id} className="flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60">
-                      {actioning === d.id ? <Loader2 size={12} className="animate-spin" /> : editingId === d.id ? <><Send size={12} /> Send edited</> : <><CheckCircle2 size={12} /> Send as drafted</>}
-                    </button>
+                      <button onClick={() => respond(d.id, "rejected")} disabled={actioning === d.id} className="flex items-center gap-1 rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60">
+                        <XCircle size={12} /> Reject
+                      </button>
+                      <button onClick={() => respond(d.id, "sent")} disabled={actioning === d.id} className="flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60">
+                        {actioning === d.id ? <Loader2 size={12} className="animate-spin" /> : editingId === d.id ? <><Send size={12} /> Send edited</> : <><CheckCircle2 size={12} /> Send as drafted</>}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

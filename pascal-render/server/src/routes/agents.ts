@@ -13,7 +13,9 @@
 
 import { Router, type Request, type Response } from "express";
 import { pool } from "../db/pool.js";
-import { categorizeAndDraft, persistDraft, type InboundMessage } from "../services/agent6ChiefOfStaff.js";
+import { categorizeAndDraft as chiefCategorize, persistDraft as chiefPersist, type InboundMessage } from "../services/agent6ChiefOfStaff.js";
+import { categorizeAndDraft as bookingCategorize, persistDraft as bookingPersist, type BookingEvent } from "../services/agent12BookingDispatch.js";
+import { categorizeAndDraft as customsCategorize, persistDraft as customsPersist, type CustomsEvent } from "../services/agent13CustomsLiaison.js";
 
 export function createAgentsRouter(): Router {
   const router = Router();
@@ -97,8 +99,60 @@ export function createAgentsRouter(): Router {
       body: String(body),
       receivedAtIso: new Date().toISOString(),
     };
-    const output = await categorizeAndDraft(message);
-    const draft = await persistDraft(message, output, `simulated:${Date.now()}`);
+    const output = await chiefCategorize(message);
+    const draft = await chiefPersist(message, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  // Simulate a booking / dispatch milestone. Any field missing gets a sane
+  // default so Roger can just fill in the event type and see a draft come out.
+  router.post("/agents/booking-dispatch/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.shipmentRef || !b.eventType || !b.eventDetail) {
+      return res.status(400).json({ error: "shipmentRef, eventType, and eventDetail are required." });
+    }
+    const event: BookingEvent = {
+      shipmentRef: String(b.shipmentRef),
+      carrier: String(b.carrier ?? "TBD"),
+      origin: String(b.origin ?? "TBD"),
+      destination: String(b.destination ?? "TBD"),
+      eventType: String(b.eventType),
+      eventDetail: String(b.eventDetail),
+      eventAtIso: new Date().toISOString(),
+      clientEmail: b.clientEmail ? String(b.clientEmail) : undefined,
+      clientName: b.clientName ? String(b.clientName) : undefined,
+    };
+    const output = await bookingCategorize(event);
+    const draft = await bookingPersist(event, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  // Simulate a customs event. Doc checkboxes default to a realistic
+  // cross-border packet so Roger can toggle one off and see the flag fire.
+  router.post("/agents/customs-liaison/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.shipmentRef || !b.brokerName || !b.eventType) {
+      return res.status(400).json({ error: "shipmentRef, brokerName, and eventType are required." });
+    }
+    const event: CustomsEvent = {
+      shipmentRef: String(b.shipmentRef),
+      direction: b.direction === "north_to_south" || b.direction === "south_to_north" || b.direction === "domestic" ? b.direction : "south_to_north",
+      brokerName: String(b.brokerName),
+      brokerEmail: b.brokerEmail ? String(b.brokerEmail) : undefined,
+      eventType: String(b.eventType),
+      eventDetail: String(b.eventDetail ?? ""),
+      hasCommercialInvoice: b.hasCommercialInvoice !== false,
+      hasPackingList: b.hasPackingList !== false,
+      hasUsmcaCert: b.hasUsmcaCert !== false,
+      hasPoaOnFile: b.hasPoaOnFile !== false,
+      isDg: b.isDg === true,
+      hasDgPapers: b.hasDgPapers !== false,
+      entryNumber: b.entryNumber ? String(b.entryNumber) : undefined,
+      clientEmail: b.clientEmail ? String(b.clientEmail) : undefined,
+      clientName: b.clientName ? String(b.clientName) : undefined,
+    };
+    const output = await customsCategorize(event);
+    const draft = await customsPersist(event, output, `simulated:${Date.now()}`);
     return res.status(201).json({ draft, output });
   });
 

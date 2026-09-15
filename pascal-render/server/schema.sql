@@ -1112,3 +1112,34 @@ INSERT INTO agent_registry (agent_key, agent_number, name, role, description, st
   ('agent10_legal_watcher',  10, 'Legal & Compliance Watcher', 'Back-office',      'Contract renewal alerts, insurance expiries, regulatory deadlines, POA renewals, DG cert renewals.',               'planned', TRUE),
   ('agent11_hr',             11, 'HR & Onboarding',            'Back-office',      'Draft offer letters, employee onboarding checklists, policy responses. Deferred until first hire.',                'planned', TRUE)
 ON CONFLICT (agent_key) DO NOTHING;
+
+-- Two additional client-facing agents that own the actual freight flow.
+-- Inserted as display slots 5 and 6; existing 5-11 renumber to 7-13 below.
+-- agent_key names stay stable to avoid orphaning existing draft rows.
+INSERT INTO agent_registry (agent_key, agent_number, name, role, description, status, human_in_loop) VALUES
+  ('agent12_booking_dispatch', 5, 'Booking & Dispatch', 'Client-facing', 'Tenders load to selected carrier, confirms pickup, polls in-transit milestones, flags exceptions, closes out POD.', 'active', TRUE),
+  ('agent13_customs_liaison',  6, 'Customs Liaison',    'Client-facing', 'Coordinates with client''s broker of record (we do not file entries). Confirms doc packet, tracks entry status, flags holds/exams, confirms release.', 'active', TRUE)
+ON CONFLICT (agent_key) DO NOTHING;
+
+-- Renumber existing agents so display order reflects the actual freight
+-- flow: intake → compliance → rate → equipment → booking → customs →
+-- client chat, then back-office. Idempotent — safe to re-run.
+UPDATE agent_registry SET agent_number = 7,  updated_at = now() WHERE agent_key = 'agent5_client_chat'      AND agent_number <> 7;
+
+-- Agent 5 was seeded as "Client Chat" — expand scope to full Customer Service:
+-- WISMO deflection, proactive exception notification, order modifications /
+-- accessorial coordination, sentiment triage + warm human escalation. Sits
+-- downstream of Agent 5 Booking & Dispatch and Agent 6 Customs Liaison and
+-- is the client-facing voice for both.
+UPDATE agent_registry
+   SET name = 'Customer Service',
+       description = 'Client-facing coordinator across email / portal / SMS. WISMO tracking + doc retrieval (POD, invoices, clearances), proactive delay alerts with revised ETAs, in-flight order changes / accessorials, sentiment scoring, warm escalation to Roger for OS&D / claims / rate disputes.',
+       updated_at = now()
+ WHERE agent_key = 'agent5_client_chat'
+   AND name <> 'Customer Service';
+UPDATE agent_registry SET agent_number = 8,  updated_at = now() WHERE agent_key = 'agent6_chief_of_staff'   AND agent_number <> 8;
+UPDATE agent_registry SET agent_number = 9,  updated_at = now() WHERE agent_key = 'agent7_executive_assist' AND agent_number <> 9;
+UPDATE agent_registry SET agent_number = 10, updated_at = now() WHERE agent_key = 'agent8_finance'          AND agent_number <> 10;
+UPDATE agent_registry SET agent_number = 11, updated_at = now() WHERE agent_key = 'agent9_marketing'        AND agent_number <> 11;
+UPDATE agent_registry SET agent_number = 12, updated_at = now() WHERE agent_key = 'agent10_legal_watcher'   AND agent_number <> 12;
+UPDATE agent_registry SET agent_number = 13, updated_at = now() WHERE agent_key = 'agent11_hr'              AND agent_number <> 13;

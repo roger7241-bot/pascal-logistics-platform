@@ -97,6 +97,33 @@ export const api = {
     request<TResult>(`/api/operator/agents/drafts/${id}`, { method: "PATCH", body: payload }),
   chiefOfStaffSimulate: <TResult = unknown>(payload: { fromEmail: string; fromName?: string; subject: string; body: string }) =>
     request<TResult>("/api/operator/agents/chief-of-staff/simulate", { method: "POST", body: payload }),
+  bookingDispatchSimulate: <TResult = unknown>(payload: {
+    shipmentRef: string;
+    carrier?: string;
+    origin?: string;
+    destination?: string;
+    eventType: string;
+    eventDetail: string;
+    clientEmail?: string;
+    clientName?: string;
+  }) => request<TResult>("/api/operator/agents/booking-dispatch/simulate", { method: "POST", body: payload }),
+  customsLiaisonSimulate: <TResult = unknown>(payload: {
+    shipmentRef: string;
+    direction?: "north_to_south" | "south_to_north" | "domestic";
+    brokerName: string;
+    brokerEmail?: string;
+    eventType: string;
+    eventDetail?: string;
+    hasCommercialInvoice?: boolean;
+    hasPackingList?: boolean;
+    hasUsmcaCert?: boolean;
+    hasPoaOnFile?: boolean;
+    isDg?: boolean;
+    hasDgPapers?: boolean;
+    entryNumber?: string;
+    clientEmail?: string;
+    clientName?: string;
+  }) => request<TResult>("/api/operator/agents/customs-liaison/simulate", { method: "POST", body: payload }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>
