@@ -51,7 +51,7 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
   const [pickupDate, setPickupDate] = useState(new Date().toISOString().split("T")[0]);
   const [weightLbs, setWeightLbs] = useState("500");
   const [freightClass, setFreightClass] = useState("150");
-  const [units, setUnits] = useState("1");
+  const units = "1";
 
   const [result, setResult] = useState<CompareResponse | undefined>();
   const [loading, setLoading] = useState(false);
