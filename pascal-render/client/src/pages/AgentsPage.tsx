@@ -44,7 +44,7 @@ interface BookingPayload {
   output: DraftOutputBase;
 }
 interface CustomsPayload {
-  event: { shipmentRef: string; direction: string; brokerName: string; entryNumber?: string };
+  event: { shipmentRef: string; direction: string; brokerName: string; eventType: string; entryNumber?: string };
   output: DraftOutputBase & { docPacketIssues: string[]; recipientRole: "broker" | "client" | "internal" };
 }
 interface VettingPayload {
