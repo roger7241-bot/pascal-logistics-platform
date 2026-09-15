@@ -15,8 +15,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
 import { PASCAL_SYSTEM_PREFIX } from "./pascalContext.js";
-import { createTask, advanceTask, closeTask } from "./orchestrator.js";
+import { createTask, advanceTask, closeTask, getTask, type TrailEntry } from "./orchestrator.js";
 import { getPlaybook, type Playbook } from "./playbooks.js";
+import { executeAgentStep, extractPriorContributions } from "./agentStepExecutor.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -64,11 +65,18 @@ export async function runPlaybook(args: RunPlaybookArgs): Promise<PlaybookRunRes
     originContribution: `${playbook.quarterback === "agent6_chief_of_staff" ? "Chief of Staff" : "Executive Assistant"} called the play: ${playbook.name}. ${args.triggerSummary}`,
   });
 
+  // Preload agent names once for use by extractPriorContributions.
+  const agentNameMap = new Map<string, string>();
+  const registryRows = await pool.query(`SELECT agent_key, name FROM agent_registry`);
+  for (const r of registryRows.rows) agentNameMap.set(r.agent_key, r.name);
+
   let stepsExecuted = 1; // the create counts as step 1
   let stepsGated = 0;
   let currentAgentKey = firstStep.agentKey;
+  // Accumulate the playbook payload as each step contributes.
+  let livePayload: Record<string, unknown> = { ...args.contextPayload, playbookKey: playbook.key, trigger: args.triggerSummary };
 
-  // Execute the remaining steps in order. Stop at the first gate.
+  // Execute each step in order. Stop at the first gate.
   for (let i = 0; i < playbook.steps.length; i++) {
     const step = playbook.steps[i];
 
@@ -82,7 +90,7 @@ export async function runPlaybook(args: RunPlaybookArgs): Promise<PlaybookRunRes
       continue;
     }
 
-    // Advance from current agent to this step's agent (if different).
+    // Advance from the current agent to this step's agent (if different).
     if (i > 0 && currentAgentKey !== step.agentKey) {
       await advanceTask({
         taskId,
@@ -93,19 +101,48 @@ export async function runPlaybook(args: RunPlaybookArgs): Promise<PlaybookRunRes
       currentAgentKey = step.agentKey;
     }
 
-    // Log the step execution (in Phase 1 we record it as a trail entry;
-    // Phase 2 will actually invoke each agent's categorizeAndDraft here).
+    // Actually invoke the agent. This produces a real draft, in Roger's
+    // voice, with all prior team contributions in context — the difference
+    // vs a rigid pipeline. The draft lands in the review queue linked to
+    // this task.
+    const taskRow = await getTask(taskId);
+    const prior = extractPriorContributions((taskRow?.trail ?? []) as TrailEntry[], agentNameMap);
+
+    const execution = await executeAgentStep({
+      taskId,
+      playbook,
+      step,
+      stepIndex: i,
+      contextPayload: livePayload,
+      priorContributions: prior,
+      clientOrgId: args.clientOrgId,
+    });
+
+    // Record the substantive contribution on the trail with the draft id
+    // so Roger can jump straight from the trail to the draft.
     await advanceTask({
       taskId,
       fromAgentKey: step.agentKey,
       toAgentKey: i + 1 < playbook.steps.length ? playbook.steps[i + 1].agentKey : playbook.quarterback,
-      contribution: `Executed: ${step.action}`,
+      contribution: execution.contribution,
+      linkedDraftId: execution.draftId,
     });
+
+    // Fold the agent's contribution into the live payload so subsequent
+    // steps see it in their context.
+    livePayload = {
+      ...livePayload,
+      [`step_${step.stepKey}_output`]: {
+        agentKey: step.agentKey,
+        contribution: execution.contribution,
+        draftId: execution.draftId,
+        recipientRole: execution.recipientRole,
+      },
+    };
     stepsExecuted += 1;
 
-    // Gate for review — stop the run here. Roger clears it manually and
-    // the remaining steps get re-triggered by the orchestrator sweep
-    // (or by clicking "Continue play" in the UI, future feature).
+    // Gate for review — stop the run. Roger clears the gate and the
+    // remaining steps resume in a follow-up (Phase-3 "continue play" UI).
     if (step.gateForReview) {
       await advanceTask({
         taskId,
@@ -120,11 +157,13 @@ export async function runPlaybook(args: RunPlaybookArgs): Promise<PlaybookRunRes
   }
 
   // Client-visible narrative wrap-up. Composed by the quarterback in
-  // Roger's voice. If the play is not client-facing, we still produce
-  // an internal narrative so Roger has the story on one page.
+  // Roger's voice, using every prior contribution from the team so it
+  // reads as one coordinated response — not five stitched drafts.
   let clientNarrative: string | undefined;
   if (playbook.clientVisible && client) {
-    clientNarrative = await composeClientNarrative(playbook, args);
+    const finalTaskRow = await getTask(taskId);
+    const priorForNarrative = extractPriorContributions((finalTaskRow?.trail ?? []) as TrailEntry[], agentNameMap);
+    clientNarrative = await composeClientNarrative(playbook, args, priorForNarrative);
     await pool.query(
       `UPDATE agent_tasks SET payload = payload || $1::jsonb, updated_at = now() WHERE id = $2`,
       [JSON.stringify({ clientNarrative }), taskId],
@@ -144,9 +183,14 @@ export async function runPlaybook(args: RunPlaybookArgs): Promise<PlaybookRunRes
 }
 
 // Compose the client-visible narrative — the "here's what we did"
-// message that makes the client feel the difference. First-person plural,
-// no jargon, no agent names, no aggregate numbers. Signed by Roger.
-async function composeClientNarrative(playbook: Playbook, args: RunPlaybookArgs): Promise<string> {
+// message that makes the client feel the difference. Uses every prior
+// contribution from the team so the narrative reflects the actual
+// coordinated work, not a generic summary. Signed by Roger.
+async function composeClientNarrative(
+  playbook: Playbook,
+  args: RunPlaybookArgs,
+  contributions: { agentKey: string; agentName: string; content: string }[],
+): Promise<string> {
   if (!client) return "";
   const qbName = playbook.quarterback === "agent6_chief_of_staff" ? "Chief of Staff" : "Executive Assistant";
   const systemPrompt = `${PASCAL_SYSTEM_PREFIX}ROLE — You are the ${qbName} (Agent ${playbook.quarterback === "agent6_chief_of_staff" ? "10" : "11"}). You just quarterbacked the "${playbook.name}" play for a client and now you compose the message the client sees. This is the moment they feel the difference vs a normal freight vendor — proactive, specific, coordinated.
@@ -164,9 +208,13 @@ Rules:
 - Ground everything in the context they know (their shipment, their broker, their HS code).
 - If the play needs their input, ask for it explicitly with a soft ask.`;
 
+  const teamWorkBlock = contributions.length > 0
+    ? `\n\nWhat the team actually did (fold this into "what we did"):\n${contributions.map((c) => `- ${c.content}`).join("\n")}`
+    : "";
+
   const userPrompt = `Playbook: ${playbook.name}
 Trigger: ${args.triggerSummary}
-Context: ${JSON.stringify(args.contextPayload, null, 2)}`;
+Context: ${JSON.stringify(args.contextPayload, null, 2)}${teamWorkBlock}`;
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-5",
