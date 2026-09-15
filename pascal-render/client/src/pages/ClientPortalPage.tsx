@@ -7,6 +7,7 @@ import { ClientOpsBaselineWizard } from "../components/ClientOpsBaselineWizard";
 import { ChatbotWidget } from "../components/ChatbotWidget";
 import { ClientRerouteSignoffCard } from "../components/ClientRerouteSignoffCard";
 import { KpiCard, ProgressBar } from "../components/KpiCard";
+import { SpotRateExplorer } from "../components/SpotRateExplorer";
 import { api } from "../config/api";
 import type { ClientShipmentSummary, StatusChip } from "../types/shipment";
 import type { RerouteAdvisory } from "../types/reroute";
@@ -159,6 +160,11 @@ export function ClientPortalPage() {
             <MessageCircle size={15} /> Ask Agent 5
           </button>
         </div>
+
+        {/* Spot Rate Explorer — self-serve rate lookup for planning ahead.
+            "Request booking" doesn't book directly; it flags the operator
+            to confirm carrier capacity, PARS/PAPS, DG, and dispatch. */}
+        <SpotRateExplorer />
 
         {/* Multi-mode shipment grid */}
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">

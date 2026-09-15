@@ -22,6 +22,7 @@ import { getTrackerState } from "../services/progressTracker.js";
 import { logActivity } from "../services/activityLog.js";
 import { sendOperationalEmail } from "../services/agentMailDispatch.js";
 import { sendDriverSms } from "../services/twilioMessaging.js";
+import { getPriority1LtlRates, type Priority1LineItem } from "../services/priority1.js";
 import { pool } from "../db/pool.js";
 import type { ClientShipmentSummary } from "../types/shipment.js";
 import type { WsManager } from "../ws/wsManager.js";
@@ -329,6 +330,89 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     }
     await logActivity("shipment_ingested", `Batch SMS sent to ${results.filter((r) => r.sent).length}/${shipmentIds.length} driver(s): "${message}"`);
     return res.status(200).json({ results });
+  });
+
+  // ==========================================================================
+  // POST /api/client/quote-compare
+  // Client-facing self-serve spot rate lookup — same backend as the operator
+  // version, but scoped automatically to the authenticated client's orgId
+  // (never trusts a body-supplied orgId). Operators calling this endpoint
+  // get their own operator scope; only clients get org-locked. Logs every
+  // comparison to activity_log so the operator side can see when a client
+  // is shopping a lane.
+  // ==========================================================================
+  router.post("/quote-compare", async (req: Request, res: Response) => {
+    const { originZip, destinationZip, pickupDateIso, items } = req.body ?? {};
+    const authOrgId = req.authUser?.orgId;
+
+    if (!authOrgId) {
+      return res.status(400).json({ error: "This account has no org on file — contact your Pascal Logistics operator." });
+    }
+    if (!originZip || !destinationZip || !pickupDateIso || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "originZip, destinationZip, pickupDateIso, and items[] are required." });
+    }
+
+    const normalizedItems: Priority1LineItem[] = items.map((it: Record<string, unknown>) => ({
+      freightClass: String(it.freightClass ?? "150"),
+      packagingType: String(it.packagingType ?? "Pallet"),
+      units: Number(it.units ?? 1),
+      pieces: Number(it.pieces ?? 1),
+      totalWeightLbs: Number(it.totalWeightLbs ?? 0),
+      lengthIn: Number(it.lengthIn ?? 48),
+      widthIn: Number(it.widthIn ?? 40),
+      heightIn: Number(it.heightIn ?? 40),
+      nmfcNumber: it.nmfcNumber ? String(it.nmfcNumber) : undefined,
+      hazmat: Boolean(it.hazmat),
+    }));
+
+    const [p1Response, incumbentResult] = await Promise.all([
+      getPriority1LtlRates({ originZipCode: originZip, destinationZipCode: destinationZip, pickupDate: pickupDateIso, items: normalizedItems }),
+      pool.query(
+        `SELECT * FROM client_carrier_rates
+          WHERE org_id = $1 AND origin_zip = $2 AND destination_zip = $3
+          ORDER BY effective_date DESC
+          LIMIT 1`,
+        [authOrgId, originZip, destinationZip],
+      ),
+    ]);
+
+    const incumbentRow = incumbentResult.rowCount ? incumbentResult.rows[0] : undefined;
+    const incumbent = incumbentRow ? {
+      id: incumbentRow.id as string,
+      carrierName: incumbentRow.carrier_name as string,
+      serviceLevel: (incumbentRow.service_level as string) ?? undefined,
+      transitDays: incumbentRow.transit_days !== null ? Number(incumbentRow.transit_days) : undefined,
+      totalRateUsd: Number(incumbentRow.total_rate_usd),
+      effectiveDateIso: incumbentRow.effective_date ? (incumbentRow.effective_date as Date).toISOString().split("T")[0] : undefined,
+      rateSource: incumbentRow.rate_source as string,
+    } : undefined;
+    const incumbentRate = incumbent?.totalRateUsd;
+
+    const compared = p1Response.quotes.map((q) => {
+      const savingsUsd = incumbentRate !== undefined ? incumbentRate - q.totalUsd : undefined;
+      const savingsPct = incumbentRate !== undefined && incumbentRate > 0 ? (savingsUsd! / incumbentRate) * 100 : undefined;
+      return { ...q, savingsVsIncumbentUsd: savingsUsd, savingsVsIncumbentPct: savingsPct };
+    });
+    compared.sort((a, b) => a.totalUsd - b.totalUsd);
+
+    // Signal to the operator side: this client just shopped a lane.
+    const bestSavings = compared.length && incumbentRate !== undefined
+      ? Math.max(0, ...compared.map((q) => q.savingsVsIncumbentUsd ?? 0))
+      : undefined;
+    await logActivity(
+      "spot_quote_viewed",
+      `${req.authUser?.email ?? "client"} ran a spot quote: ${originZip} → ${destinationZip}${bestSavings !== undefined ? ` · best save $${bestSavings.toFixed(0)}` : " · no incumbent on file"}`,
+      undefined,
+      { orgId: authOrgId, originZip, destinationZip, quoteCount: compared.length, demo: Boolean(p1Response.demo) },
+    );
+
+    return res.status(200).json({
+      incumbent,
+      quotes: compared,
+      priority1Simulated: p1Response.simulated,
+      priority1Demo: Boolean(p1Response.demo),
+      priority1Error: p1Response.error,
+    });
   });
 
   return router;

@@ -75,6 +75,7 @@ export const api = {
     request<TResult>(`/api/operator/dispatch/staging/${id}/send-gate-sms`, { method: "POST", body: payload ?? {} }),
   createMagicUploadLink: <TResult = unknown>(id: string) => request<TResult>(`/api/operator/dispatch/staging/${id}/magic-upload-link`, { method: "POST" }),
   clientShipments: <TResult = unknown>() => request<TResult>("/api/client/shipments"),
+  clientQuoteCompare: <TResult = unknown>(payload: unknown) => request<TResult>("/api/client/quote-compare", { method: "POST", body: payload }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>
     request<TResult>(`/api/client/shipments/search?query=${encodeURIComponent(query)}${type ? `&type=${type}` : ""}`),
   deleteClientShipment: <TResult = unknown>(id: string) => request<TResult>(`/api/client/shipments/${id}`, { method: "DELETE" }),
