@@ -13,6 +13,20 @@
 
 const PRIORITY1_API_KEY = process.env.PRIORITY1_API_KEY;
 const PRIORITY1_BASE_URL = process.env.PRIORITY1_BASE_URL ?? "https://api.priority1.com";
+const PRIORITY1_DEMO_MODE = (process.env.PRIORITY1_DEMO_MODE ?? "").toLowerCase() === "true";
+
+// Demo carrier roster — real US LTL carrier names, per-carrier price
+// multipliers around a computed lane base. Used only when
+// PRIORITY1_DEMO_MODE is on AND PRIORITY1_API_KEY is missing, so a real
+// key always beats demo mode (impossible to leave demo on by accident
+// once you've wired a live vendor).
+const DEMO_CARRIERS: Array<{ carrierName: string; serviceLevel: string; transitDays: number; multiplier: number }> = [
+  { carrierName: "SAIA Motor Freight", serviceLevel: "Standard LTL", transitDays: 3, multiplier: 0.88 },
+  { carrierName: "XPO Logistics", serviceLevel: "Standard LTL", transitDays: 3, multiplier: 0.92 },
+  { carrierName: "Estes Express", serviceLevel: "Standard LTL", transitDays: 4, multiplier: 0.96 },
+  { carrierName: "R+L Carriers", serviceLevel: "Standard LTL", transitDays: 3, multiplier: 1.02 },
+  { carrierName: "Old Dominion", serviceLevel: "Guaranteed LTL", transitDays: 2, multiplier: 1.14 },
+];
 
 export interface Priority1LineItem {
   freightClass: string;
@@ -49,7 +63,54 @@ export interface Priority1RateQuote {
 export interface Priority1RateResponse {
   quotes: Priority1RateQuote[];
   simulated: boolean;
+  demo?: boolean;
   error?: string;
+}
+
+// Deterministic "distance" proxy from ZIP codes — first two digits of a
+// US ZIP encode SCF sortation region, close enough to a cost-of-lane
+// signal for demo purposes. Canadian postal codes (letter-number-letter)
+// hash to a stable pseudo-region so the same lane returns the same
+// rates across page refreshes.
+function laneDistanceScore(originZip: string, destinationZip: string): number {
+  function scfDigits(zip: string): number {
+    const digits = zip.replace(/\D/g, "");
+    if (digits.length >= 2) return Number(digits.slice(0, 2));
+    // Canadian / non-numeric — hash to a 0-99 pseudo-region
+    let h = 0;
+    for (const c of zip.toUpperCase()) h = (h * 31 + c.charCodeAt(0)) % 99;
+    return h;
+  }
+  return Math.abs(scfDigits(originZip) - scfDigits(destinationZip));
+}
+
+function buildDemoQuotes(request: Priority1RateRequest): Priority1RateQuote[] {
+  const totalWeight = request.items.reduce((sum, it) => sum + it.totalWeightLbs, 0) || 100;
+  const avgClass = request.items.reduce((sum, it) => sum + (Number(it.freightClass) || 100), 0) / request.items.length;
+  const distanceScore = laneDistanceScore(request.originZipCode, request.destinationZipCode);
+
+  // Base = fixed floor + weight component + distance component + class component.
+  // Numbers tuned to land in a realistic $500-$2500 range for typical LTL loads.
+  const base = 220 + (totalWeight * 0.85) + (distanceScore * 12) + (avgClass * 1.4);
+  const pickup = new Date(request.pickupDate);
+  const expiration = new Date(pickup.getTime());
+  expiration.setDate(expiration.getDate() + 14);
+
+  return DEMO_CARRIERS.map((c) => {
+    const total = Math.round(base * c.multiplier * 100) / 100;
+    const fuelSurcharge = Math.round(total * 0.18 * 100) / 100;
+    return {
+      carrierName: c.carrierName,
+      serviceLevel: c.serviceLevel,
+      transitDays: c.transitDays,
+      totalUsd: total,
+      baseCostUsd: Math.round((total - fuelSurcharge) * 100) / 100,
+      fuelSurchargeUsd: fuelSurcharge,
+      accessorialsUsd: 0,
+      expirationDateIso: expiration.toISOString(),
+      quoteReference: `DEMO-${c.carrierName.split(" ")[0].toUpperCase()}-${Date.now().toString(36).slice(-6)}`,
+    };
+  });
 }
 
 interface RawRateQuoteDetail {
@@ -91,6 +152,11 @@ function normalizeQuote(raw: RawRateQuote): Priority1RateQuote {
 }
 
 export async function getPriority1LtlRates(request: Priority1RateRequest): Promise<Priority1RateResponse> {
+  if (!PRIORITY1_API_KEY && PRIORITY1_DEMO_MODE) {
+    console.log(`[DEMO Priority1 — PRIORITY1_DEMO_MODE=true, no live key] LTL rate request ${request.originZipCode} -> ${request.destinationZipCode}`);
+    return { quotes: buildDemoQuotes(request), simulated: true, demo: true };
+  }
+
   if (!PRIORITY1_API_KEY) {
     console.log(`[SIMULATED Priority1 — no PRIORITY1_API_KEY configured] LTL rate request ${request.originZipCode} -> ${request.destinationZipCode}`);
     return { quotes: [], simulated: true };

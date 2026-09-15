@@ -315,6 +315,7 @@ export function createCarriersRouter(telemetryService: BorderTelemetryService): 
       incumbent,
       quotes: compared,
       priority1Simulated: p1Response.simulated,
+      priority1Demo: Boolean(p1Response.demo),
       priority1Error: p1Response.error,
     });
   });

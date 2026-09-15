@@ -37,6 +37,7 @@ interface CompareResponse {
   incumbent?: IncumbentRate;
   quotes: ComparedQuote[];
   priority1Simulated: boolean;
+  priority1Demo?: boolean;
   priority1Error?: string;
 }
 
@@ -154,11 +155,20 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
         </div>
       )}
 
-      {result?.priority1Simulated && (
+      {result?.priority1Demo && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg bg-violet-50 border border-violet-200 p-3 text-sm text-violet-900">
+          <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>
+            <strong>Demo mode</strong> — quotes below are illustrative (real carrier names, plausible rates by lane and weight, no live vendor). Turn off PRIORITY1_DEMO_MODE and add a real vendor key when you&rsquo;re ready for live quotes.
+          </span>
+        </div>
+      )}
+
+      {result?.priority1Simulated && !result?.priority1Demo && (
         <div className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
           <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <span>
-            <strong>Priority1 in simulation mode</strong> — the server has no PRIORITY1_API_KEY configured, so no live carriers were returned. Add the key to Render env vars to enable live quotes.
+            <strong>No rate vendor configured</strong> — set PRIORITY1_API_KEY for live quotes, or PRIORITY1_DEMO_MODE=true for illustrative rates.
           </span>
         </div>
       )}
