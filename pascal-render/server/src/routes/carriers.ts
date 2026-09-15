@@ -29,6 +29,7 @@ import { pool } from "../db/pool.js";
 import { optimizeRate } from "../agents/agent3RateOptimization.js";
 import type { CargoDetails, CustomsDetails } from "../types/shipment.js";
 import type { BorderTelemetryService } from "../services/borderTelemetryService.js";
+import { getPriority1LtlRates, type Priority1LineItem } from "../services/priority1.js";
 import { SAMPLE_SHIPMENTS } from "./client.js";
 
 const CARRIER_FORMAT_RULES: Record<string, RegExp> = {
@@ -166,6 +167,156 @@ export function createCarriersRouter(telemetryService: BorderTelemetryService): 
     }
 
     return res.status(200).json({ savingsByAccount: Array.from(byOrg.entries()).map(([clientOrg, mtdSavingsUsd]) => ({ clientOrg, mtdSavingsUsd })) });
+  });
+
+  // ==========================================================================
+  // CLIENT CARRIER RATES ON FILE — CRUD for the incumbent-rate table that
+  // powers Priority1 quote comparison. Operator-scoped: the same operator
+  // manages rates across all clients; role/org scoping happens via the
+  // requireOperator middleware mounted at /api/operator/*, not per-route.
+  // ==========================================================================
+
+  function rowToRate(row: Record<string, unknown>) {
+    return {
+      id: row.id,
+      orgId: row.org_id,
+      originZip: row.origin_zip,
+      destinationZip: row.destination_zip,
+      carrierName: row.carrier_name,
+      serviceLevel: row.service_level ?? undefined,
+      transitDays: row.transit_days !== null ? Number(row.transit_days) : undefined,
+      totalRateUsd: Number(row.total_rate_usd),
+      rateSource: row.rate_source,
+      effectiveDateIso: row.effective_date ? (row.effective_date as Date).toISOString().split("T")[0] : undefined,
+      notes: row.notes ?? undefined,
+      createdAtIso: row.created_at ? (row.created_at as Date).toISOString() : undefined,
+      updatedAtIso: row.updated_at ? (row.updated_at as Date).toISOString() : undefined,
+    };
+  }
+
+  router.get("/client-carrier-rates", async (req: Request, res: Response) => {
+    const orgId = typeof req.query.orgId === "string" ? req.query.orgId : undefined;
+    const params: string[] = [];
+    let where = "";
+    if (orgId) {
+      params.push(orgId);
+      where = "WHERE org_id = $1";
+    }
+    const result = await pool.query(
+      `SELECT * FROM client_carrier_rates ${where} ORDER BY org_id, origin_zip, destination_zip, effective_date DESC`,
+      params,
+    );
+    return res.status(200).json({ rates: result.rows.map(rowToRate) });
+  });
+
+  router.post("/client-carrier-rates", async (req: Request, res: Response) => {
+    const { orgId, originZip, destinationZip, carrierName, serviceLevel, transitDays, totalRateUsd, rateSource, effectiveDate, notes } = req.body ?? {};
+    if (!orgId || !originZip || !destinationZip || !carrierName || totalRateUsd === undefined) {
+      return res.status(400).json({ error: "orgId, originZip, destinationZip, carrierName, and totalRateUsd are required." });
+    }
+    const result = await pool.query(
+      `INSERT INTO client_carrier_rates
+         (org_id, origin_zip, destination_zip, carrier_name, service_level, transit_days, total_rate_usd, rate_source, effective_date, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::date, CURRENT_DATE), $10)
+       RETURNING *`,
+      [
+        orgId,
+        originZip,
+        destinationZip,
+        carrierName,
+        serviceLevel ?? null,
+        transitDays ?? null,
+        Number(totalRateUsd),
+        rateSource ?? "manual",
+        effectiveDate ?? null,
+        notes ?? null,
+      ],
+    );
+    return res.status(201).json({ rate: rowToRate(result.rows[0]) });
+  });
+
+  router.patch("/client-carrier-rates/:id", async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { carrierName, serviceLevel, transitDays, totalRateUsd, rateSource, effectiveDate, notes } = req.body ?? {};
+    const result = await pool.query(
+      `UPDATE client_carrier_rates
+         SET carrier_name    = COALESCE($2, carrier_name),
+             service_level   = COALESCE($3, service_level),
+             transit_days    = COALESCE($4, transit_days),
+             total_rate_usd  = COALESCE($5, total_rate_usd),
+             rate_source     = COALESCE($6, rate_source),
+             effective_date  = COALESCE($7::date, effective_date),
+             notes           = COALESCE($8, notes),
+             updated_at      = now()
+       WHERE id = $1
+       RETURNING *`,
+      [id, carrierName ?? null, serviceLevel ?? null, transitDays ?? null, totalRateUsd !== undefined ? Number(totalRateUsd) : null, rateSource ?? null, effectiveDate ?? null, notes ?? null],
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: "Rate not found." });
+    return res.status(200).json({ rate: rowToRate(result.rows[0]) });
+  });
+
+  router.delete("/client-carrier-rates/:id", async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const result = await pool.query("DELETE FROM client_carrier_rates WHERE id = $1", [id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Rate not found." });
+    return res.status(204).send();
+  });
+
+  // ==========================================================================
+  // QUOTE COMPARE — hits Priority1 for live LTL rates, joins in the
+  // client's most recent incumbent rate on file for the same lane, returns
+  // rows sorted by savings $ against the incumbent. Empty incumbent side
+  // returns Priority1 rates alone with no savings math, not an error.
+  // ==========================================================================
+  router.post("/quote-compare", async (req: Request, res: Response) => {
+    const { orgId, originZip, destinationZip, pickupDateIso, items } = req.body ?? {};
+    if (!orgId || !originZip || !destinationZip || !pickupDateIso || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "orgId, originZip, destinationZip, pickupDateIso, and items[] are required." });
+    }
+
+    const normalizedItems: Priority1LineItem[] = items.map((it: Record<string, unknown>) => ({
+      freightClass: String(it.freightClass ?? "150"),
+      packagingType: String(it.packagingType ?? "Pallet"),
+      units: Number(it.units ?? 1),
+      pieces: Number(it.pieces ?? 1),
+      totalWeightLbs: Number(it.totalWeightLbs ?? 0),
+      lengthIn: Number(it.lengthIn ?? 48),
+      widthIn: Number(it.widthIn ?? 40),
+      heightIn: Number(it.heightIn ?? 40),
+      nmfcNumber: it.nmfcNumber ? String(it.nmfcNumber) : undefined,
+      hazmat: Boolean(it.hazmat),
+    }));
+
+    const [p1Response, incumbentResult] = await Promise.all([
+      getPriority1LtlRates({ originZipCode: originZip, destinationZipCode: destinationZip, pickupDate: pickupDateIso, items: normalizedItems }),
+      pool.query(
+        `SELECT * FROM client_carrier_rates
+          WHERE org_id = $1 AND origin_zip = $2 AND destination_zip = $3
+          ORDER BY effective_date DESC
+          LIMIT 1`,
+        [orgId, originZip, destinationZip],
+      ),
+    ]);
+
+    const incumbent = incumbentResult.rowCount ? rowToRate(incumbentResult.rows[0]) : undefined;
+    const incumbentRate = incumbent?.totalRateUsd;
+
+    const compared = p1Response.quotes.map((q) => {
+      const savingsUsd = incumbentRate !== undefined ? incumbentRate - q.totalUsd : undefined;
+      const savingsPct = incumbentRate !== undefined && incumbentRate > 0 ? (savingsUsd! / incumbentRate) * 100 : undefined;
+      return { ...q, savingsVsIncumbentUsd: savingsUsd, savingsVsIncumbentPct: savingsPct };
+    });
+
+    // Sort cheapest first — most-savings first when incumbent is known.
+    compared.sort((a, b) => a.totalUsd - b.totalUsd);
+
+    return res.status(200).json({
+      incumbent,
+      quotes: compared,
+      priority1Simulated: p1Response.simulated,
+      priority1Error: p1Response.error,
+    });
   });
 
   return router;

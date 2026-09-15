@@ -14,8 +14,10 @@ import {
   ShieldCheck,
   X,
   Info,
+  Calculator,
 } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
+import { QuoteComparisonPanel } from "../components/QuoteComparisonPanel";
 import { api } from "../config/api";
 
 interface Carrier {
@@ -79,6 +81,9 @@ export function CarrierDeskPage() {
   const [newIntegration, setNewIntegration] = useState("legacy_scraper");
   const [adding, setAdding] = useState(false);
 
+  const [compareAccounts, setCompareAccounts] = useState<Array<{ orgId: string; companyName: string }>>([]);
+  const [compareOrgId, setCompareOrgId] = useState<string>("");
+
   const load = () => {
     setLoading(true);
     Promise.all([api.carriers<{ carriers: Carrier[] }>(mode), api.savingsByAccount<{ savingsByAccount: SavingsRow[] }>(), api.carrierBorderVelocity<{ velocities: Velocity[] }>()])
@@ -91,6 +96,16 @@ export function CarrierDeskPage() {
   };
 
   useEffect(load, [mode]);
+
+  // Load accounts once for the Priority1 quote-comparison org picker.
+  useEffect(() => {
+    api.accounts<{ accounts: Array<{ orgId: string; companyName: string }> }>()
+      .then((r) => {
+        setCompareAccounts(r.accounts);
+        if (r.accounts.length > 0) setCompareOrgId(r.accounts[0].orgId);
+      })
+      .catch(() => { /* CarrierDesk still renders without the compare panel */ });
+  }, []);
 
   const handleAddCarrier = async () => {
     if (!newAccountNumber.trim()) return;
@@ -255,6 +270,39 @@ export function CarrierDeskPage() {
             </div>
           </div>
         </div>
+
+        {/* Priority1 quote-comparison: live LTL rates vs client's incumbent
+            carrier on file. Requires PRIORITY1_API_KEY on the server; the
+            panel surfaces a simulation warning when the key isn't set. */}
+        <section className="mt-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Calculator size={14} className="text-slate-700" />
+              <p className="text-sm font-bold text-slate-900">Live Rate Comparison (Priority1 vs. incumbent)</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-mono uppercase tracking-wide text-slate-500">Client</label>
+              <select
+                value={compareOrgId}
+                onChange={(e) => setCompareOrgId(e.target.value)}
+                disabled={compareAccounts.length === 0}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 focus:border-slate-500 focus:outline-none"
+              >
+                {compareAccounts.length === 0 && <option value="">No accounts loaded</option>}
+                {compareAccounts.map((a) => (
+                  <option key={a.orgId} value={a.orgId}>{a.companyName} · {a.orgId}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {compareOrgId ? (
+            <QuoteComparisonPanel orgId={compareOrgId} defaultOriginZip="98230" defaultDestinationZip="V4A9V4" />
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400 shadow-sm">
+              Add an account under CRM Accounts to run a comparison.
+            </div>
+          )}
+        </section>
       </main>
 
       {drawerOpen && (

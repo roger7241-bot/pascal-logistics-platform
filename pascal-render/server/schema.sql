@@ -929,3 +929,32 @@ ON CONFLICT (email) DO NOTHING;
 INSERT INTO users (org_id, email, password_hash, display_name, role)
 VALUES ('org_meridian', 'client@meridiancoldchain.com', '$2b$10$Hvj1xKyh3tFJ.fQnu8n75OvXYjtvt1yf5vQHZGsQAWKU046aIrxs.', 'Alicia Ford', 'client')
 ON CONFLICT (email) DO NOTHING;
+
+-- ============================================================================
+-- CLIENT CARRIER RATES ON FILE — per-client, per-lane incumbent carrier
+-- rates for the Priority1 quote comparison feature. Not a foreign key to
+-- accounts (org_id) because rates are a lane×carrier fact keyed to a
+-- tenant, not a client "profile" attribute — and adding a full FK would
+-- couple this to accounts row lifecycle in ways that hurt rate history.
+-- Kept as a plain org_id TEXT scope, same pattern the rest of the schema
+-- uses. rate_source lets us tell "manual entry" apart from
+-- "extracted-from-invoice" (Document Vault) later.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS client_carrier_rates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL,
+  origin_zip VARCHAR(10) NOT NULL,
+  destination_zip VARCHAR(10) NOT NULL,
+  carrier_name TEXT NOT NULL,
+  service_level TEXT,
+  transit_days INT,
+  total_rate_usd NUMERIC(10,2) NOT NULL,
+  rate_source TEXT NOT NULL DEFAULT 'manual',
+  effective_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_carrier_rates_org_id ON client_carrier_rates (org_id);
+CREATE INDEX IF NOT EXISTS idx_client_carrier_rates_lane ON client_carrier_rates (org_id, origin_zip, destination_zip);

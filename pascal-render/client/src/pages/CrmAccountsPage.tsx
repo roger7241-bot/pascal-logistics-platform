@@ -3,6 +3,7 @@ import { Users, Plus, X, Loader2, TrendingUp, ShieldCheck, Building2, FileStack,
 import { OperatorHeader } from "../components/OperatorHeader";
 import { KpiCard, ProgressBar } from "../components/KpiCard";
 import { AddressAutocompleteInput } from "../components/AddressAutocompleteInput";
+import { CurrentCarrierRates } from "../components/CurrentCarrierRates";
 import { subdivisionsForCountry } from "../lib/subdivisions";
 import { api } from "../config/api";
 
@@ -92,13 +93,14 @@ const POA_LABEL: Record<string, { label: string; class: string }> = {
   expired_needs_renewal: { label: "POA Expired", class: "bg-rose-100 text-rose-700" },
 };
 
-const DETAIL_TABS = ["overview", "compliance", "facilities", "freight", "carriers"] as const;
+const DETAIL_TABS = ["overview", "compliance", "facilities", "freight", "carriers", "rates"] as const;
 const TAB_LABEL: Record<(typeof DETAIL_TABS)[number], string> = {
   overview: "Overview & Contacts",
   compliance: "Customs Compliance & Vault",
   facilities: "Linked Facility SOPs",
   freight: "Active & Historical Freight",
   carriers: "Assigned Carrier Accounts",
+  rates: "Rates on File",
 };
 
 /** org_id + a short random suffix so two clients with the same/similar
@@ -567,6 +569,9 @@ export function CrmAccountsPage() {
                       ))}
                       {detail.carrierAccounts.length === 0 && <p className="text-xs text-slate-400">No linked carrier accounts.</p>}
                     </div>
+                  )}
+                  {detailTab === "rates" && (
+                    <CurrentCarrierRates orgId={detail.account.orgId} title="Incumbent carrier rates by lane" />
                   )}
                 </div>
               </>
