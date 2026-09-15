@@ -22,6 +22,8 @@ import { categorizeAndDraft as financeCategorize, persistDraft as financePersist
 import { categorizeAndDraft as marketingCategorize, persistDraft as marketingPersist, type MarketingBrief, type MarketingFormat } from "../services/agent9Marketing.js";
 import { categorizeAndDraft as eaCategorize, persistDraft as eaPersist, type EaRequest } from "../services/agent7ExecutiveAssistant.js";
 import { listRecentTasks } from "../services/orchestrator.js";
+import { runPlaybook } from "../services/quarterback.js";
+import { listPlaybooks } from "../services/playbooks.js";
 
 export function createAgentsRouter(): Router {
   const router = Router();
@@ -270,6 +272,47 @@ export function createAgentsRouter(): Router {
     const output = await marketingCategorize(brief);
     const draft = await marketingPersist(brief, output, `simulated:${Date.now()}`);
     return res.status(201).json({ draft, output });
+  });
+
+  // Playbook registry — list the plays Chief of Staff / EA can call.
+  router.get("/playbooks", async (_req: Request, res: Response) => {
+    const playbooks = listPlaybooks().map((p) => ({
+      key: p.key,
+      name: p.name,
+      trigger: p.trigger,
+      quarterback: p.quarterback,
+      clientVisible: p.clientVisible,
+      stepCount: p.steps.length,
+      steps: p.steps.map((s) => ({ agentKey: s.agentKey, action: s.action, gateForReview: s.gateForReview ?? null })),
+    }));
+    return res.status(200).json({ playbooks });
+  });
+
+  // Run a play. QB (Chief of Staff or EA depending on the playbook)
+  // orchestrates the sequence, gates review where marked, and closes
+  // with a client-visible narrative if the play is client-facing.
+  router.post("/playbooks/:key/run", async (req: Request, res: Response) => {
+    const { triggerSummary, clientOrgId, contextPayload } = req.body ?? {};
+    if (!triggerSummary) {
+      return res.status(400).json({ error: "triggerSummary is required." });
+    }
+    try {
+      const result = await runPlaybook({
+        playbookKey: req.params.key,
+        triggerSummary: String(triggerSummary),
+        clientOrgId: clientOrgId ? String(clientOrgId) : undefined,
+        contextPayload: (contextPayload && typeof contextPayload === "object") ? contextPayload : {},
+      });
+      return res.status(201).json({
+        taskId: result.taskId,
+        playbookKey: result.playbook.key,
+        stepsExecuted: result.stepsExecuted,
+        stepsGated: result.stepsGated,
+        clientNarrative: result.clientNarrative,
+      });
+    } catch (err) {
+      return res.status(400).json({ error: err instanceof Error ? err.message : "Playbook run failed." });
+    }
   });
 
   // Cross-agent task trail — every multi-agent handoff shows up here so

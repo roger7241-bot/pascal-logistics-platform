@@ -9,7 +9,7 @@
 // ============================================================================
 
 import { useEffect, useState } from "react";
-import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone, CalendarClock, GitBranch, ArrowRight } from "lucide-react";
+import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone, CalendarClock, GitBranch, ArrowRight, Play, ClipboardList } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api, ApiError } from "../config/api";
 
@@ -66,6 +66,16 @@ interface MarketingPayload {
 interface EaPayload {
   request: { eventType: string; contactName?: string; contactCompany?: string; requestDetail: string; meetingWhenIso?: string };
   output: DraftOutputBase & { recipientRole: "prospect" | "client" | "internal" };
+}
+
+interface PlaybookRow {
+  key: string;
+  name: string;
+  trigger: string;
+  quarterback: "agent6_chief_of_staff" | "agent7_executive_assist";
+  clientVisible: boolean;
+  stepCount: number;
+  steps: { agentKey: string; action: string; gateForReview: string | null }[];
 }
 
 interface TrailEntry {
@@ -171,6 +181,9 @@ export function AgentsPage() {
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [tasks, setTasks] = useState<AgentTaskRow[]>([]);
+  const [playbooks, setPlaybooks] = useState<PlaybookRow[]>([]);
+  const [runningPlaybook, setRunningPlaybook] = useState<string | undefined>();
+  const [pbTriggerSummary, setPbTriggerSummary] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const [actioning, setActioning] = useState<string | undefined>();
@@ -269,14 +282,16 @@ export function AgentsPage() {
     setLoading(true);
     setError(undefined);
     try {
-      const [a, d, t] = await Promise.all([
+      const [a, d, t, pb] = await Promise.all([
         api.agents<{ agents: AgentRow[] }>(),
         api.agentDrafts<{ drafts: DraftRow[] }>("pending"),
         api.agentTasks<{ tasks: AgentTaskRow[] }>(3).catch(() => ({ tasks: [] })),
+        api.playbooks<{ playbooks: PlaybookRow[] }>().catch(() => ({ playbooks: [] })),
       ]);
       setAgents(a.agents);
       setDrafts(d.drafts);
       setTasks(t.tasks);
+      setPlaybooks(pb.playbooks);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load agents.");
     } finally {
@@ -314,6 +329,22 @@ export function AgentsPage() {
     const o = (d.payload as { output: DraftOutputBase }).output;
     setEditedSubject(o.draftResponseSubject);
     setEditedBody(o.draftResponseBody);
+  }
+
+  async function runPlaybook(key: string) {
+    setRunningPlaybook(key);
+    setError(undefined);
+    try {
+      const pb = playbooks.find((p) => p.key === key);
+      const trigger = pbTriggerSummary || `Manually launched ${pb?.name ?? key}`;
+      await api.runPlaybook(key, { triggerSummary: trigger });
+      setPbTriggerSummary("");
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Playbook run failed.");
+    } finally {
+      setRunningPlaybook(undefined);
+    }
   }
 
   async function simulate() {
@@ -454,6 +485,70 @@ export function AgentsPage() {
             </div>
           ))}
         </section>
+
+        {/* Playbook board — Chief of Staff / EA call these plays. Roger can
+            manually launch one from here to simulate what happens end-to-end. */}
+        {playbooks.length > 0 && (
+          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <ClipboardList size={14} className="text-slate-700" />
+                <p className="text-sm font-bold text-slate-900">Playbook board</p>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">Chief of Staff + EA quarterback</span>
+              </div>
+              <input
+                value={pbTriggerSummary}
+                onChange={(e) => setPbTriggerSummary(e.target.value)}
+                placeholder="Trigger summary (optional — describe what fired the play)"
+                className="min-w-[260px] flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-xs"
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
+              {playbooks.map((pb) => {
+                const qb = pb.quarterback === "agent6_chief_of_staff" ? { name: "Chief of Staff", tag: "CoS #10" } : { name: "Executive Assistant", tag: "EA #11" };
+                const gates = pb.steps.filter((s) => s.gateForReview).length;
+                return (
+                  <div key={pb.key} className={`rounded-lg border p-3 ${pb.clientVisible ? "border-cyan-200 bg-cyan-50/30" : "border-slate-200 bg-slate-50/40"}`}>
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-sm font-semibold text-slate-900">{pb.name}</p>
+                          <span className="rounded-md border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-600">{qb.tag}</span>
+                          {pb.clientVisible && <span className="rounded-md border border-cyan-300 bg-cyan-100 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wide text-cyan-800">client-visible</span>}
+                        </div>
+                        <p className="text-[11px] text-slate-600 leading-relaxed">{pb.trigger}</p>
+                      </div>
+                      <button
+                        onClick={() => runPlaybook(pb.key)}
+                        disabled={runningPlaybook !== undefined}
+                        className="flex flex-shrink-0 items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                      >
+                        {runningPlaybook === pb.key ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+                        Run play
+                      </button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-slate-500">
+                      <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5">{pb.stepCount} steps</span>
+                      {gates > 0 && <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-amber-800">{gates} review gate{gates === 1 ? "" : "s"}</span>}
+                    </div>
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-[10px] font-mono uppercase tracking-wide text-slate-500 hover:text-slate-700">The play</summary>
+                      <ol className="mt-1 list-decimal list-inside space-y-0.5 text-[11px] text-slate-600">
+                        {pb.steps.map((s, i) => (
+                          <li key={i}>
+                            <span className="font-medium text-slate-800">{agents.find((a) => a.agentKey === s.agentKey)?.name ?? s.agentKey}</span>
+                            <span className="text-slate-500"> — {s.action}</span>
+                            {s.gateForReview && <span className="ml-1 rounded bg-amber-50 border border-amber-200 px-1 text-[10px] text-amber-800">gate</span>}
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Cross-agent task trail — visible whenever there are any tasks */}
         {tasks.length > 0 && (

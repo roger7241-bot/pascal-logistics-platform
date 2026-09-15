@@ -195,6 +195,9 @@ export const api = {
     if (status) params.push(`status=${status}`);
     return request<TResult>(`/api/operator/agent-tasks${params.length ? `?${params.join("&")}` : ""}`);
   },
+  playbooks: <TResult = unknown>() => request<TResult>("/api/operator/playbooks"),
+  runPlaybook: <TResult = unknown>(key: string, payload: { triggerSummary: string; clientOrgId?: string; contextPayload?: Record<string, unknown> }) =>
+    request<TResult>(`/api/operator/playbooks/${key}/run`, { method: "POST", body: payload }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>
