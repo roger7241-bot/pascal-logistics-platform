@@ -13,6 +13,7 @@ const OPERATOR_NAV_ITEMS = [
   { to: "/operator/operations", label: "Operations Queue" },
   { to: "/operator/carriers", label: "Carrier Desk" },
   { to: "/operator/crm", label: "CRM Accounts" },
+  { to: "/operator/agents", label: "AI Agents" },
   { to: "/border-telemetry", label: "Border Telemetry" },
 ];
 

@@ -14,6 +14,7 @@ import {
   Gauge,
   Phone,
   Zap,
+  Cpu,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -30,6 +31,7 @@ const OPERATOR_DESKS = [
   { to: "/operator/vault", label: "Document Vault", icon: FolderOpen },
   { to: "/operator/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/operator/dispatch", label: "Rapid Dispatch", icon: Zap },
+  { to: "/operator/agents", label: "AI Agents", icon: Cpu },
   { to: "/border-telemetry", label: "Border & Cams", icon: Camera },
 ];
 

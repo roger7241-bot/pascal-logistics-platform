@@ -86,6 +86,17 @@ export const api = {
   },
   clientPortalSummary: <TResult = unknown>(previewOrgId?: string) => request<TResult>(`/api/client/portal-summary${previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`),
   bookingRequests: <TResult = unknown>(status?: string) => request<TResult>(`/api/operator/booking-requests${status ? `?status=${status}` : ""}`),
+  agents: <TResult = unknown>() => request<TResult>("/api/operator/agents"),
+  agentDrafts: <TResult = unknown>(status?: string, agentKey?: string) => {
+    const params: string[] = [];
+    if (status) params.push(`status=${status}`);
+    if (agentKey) params.push(`agentKey=${agentKey}`);
+    return request<TResult>(`/api/operator/agents/drafts${params.length ? `?${params.join("&")}` : ""}`);
+  },
+  updateAgentDraft: <TResult = unknown>(id: string, payload: { status: "approved" | "rejected" | "sent" | "archived"; operatorNotes?: string; payload?: unknown }) =>
+    request<TResult>(`/api/operator/agents/drafts/${id}`, { method: "PATCH", body: payload }),
+  chiefOfStaffSimulate: <TResult = unknown>(payload: { fromEmail: string; fromName?: string; subject: string; body: string }) =>
+    request<TResult>("/api/operator/agents/chief-of-staff/simulate", { method: "POST", body: payload }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>

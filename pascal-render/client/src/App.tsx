@@ -4,6 +4,7 @@ import { BorderTelemetryPage } from "./pages/BorderTelemetryPage";
 import { ClientPortalPage } from "./pages/ClientPortalPage";
 import { OperationsQueuePage } from "./pages/OperationsQueuePage";
 import { CarrierDeskPage } from "./pages/CarrierDeskPage";
+import { AgentsPage } from "./pages/AgentsPage";
 import { BillingAdminPage } from "./pages/BillingAdminPage";
 import { ExecutiveReviewPage } from "./pages/ExecutiveReviewPage";
 import { SalesLeadsPage } from "./pages/SalesLeadsPage";
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/operator" element={<RequireAuth role="operator"><CeoHubPage /></RequireAuth>} />
           <Route path="/operator/operations" element={<RequireAuth role="operator"><OperationsQueuePage /></RequireAuth>} />
           <Route path="/operator/carriers" element={<RequireAuth role="operator"><CarrierDeskPage /></RequireAuth>} />
+          <Route path="/operator/agents" element={<RequireAuth role="operator"><AgentsPage /></RequireAuth>} />
           <Route path="/operator/billing" element={<RequireAuth role="operator"><BillingAdminPage /></RequireAuth>} />
           <Route path="/operator/executive-review" element={<RequireAuth role="operator"><ExecutiveReviewPage /></RequireAuth>} />
           <Route path="/operator/leads" element={<RequireAuth role="operator"><SalesLeadsPage /></RequireAuth>} />

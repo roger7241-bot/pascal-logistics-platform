@@ -1046,3 +1046,69 @@ VALUES
   ('SEED-321-DEMINIMIS-REVIEW', '9999.99', 'De minimis shipments', 'US_INBOUND', 'Section 321', 'USTR proposes further tightening of Section 321 de minimis for Chinese-origin goods', 'Notice of proposed rulemaking further narrows the Section 321 $800 de minimis window for goods of Chinese origin regardless of routing. Comments open for 30 days. Not yet in force.', NULL, NULL, NULL, NULL, 'https://ustr.gov/', 'info', now() - INTERVAL '7 days'),
   ('SEED-BEEF-0201-QUOTA', '0201.20', 'Beef, boneless, chilled', 'CA_TO_US', 'TRQ', 'US TRQ on Canadian beef: quarterly quota 68% filled', 'Quarter-to-date fill on the tariff-rate quota for Canadian-origin boneless beef stands at 68%. Over-quota rate remains 26.4%. Historical patterns suggest quota exhaustion around week 11.', 0.0, 0.0, NULL, CURRENT_DATE - INTERVAL '1 day', 'https://www.usitc.gov/tata/hts', 'info', now() - INTERVAL '8 days')
 ON CONFLICT (external_ref) DO NOTHING;
+
+-- ============================================================================
+-- AGENT REGISTRY + DRAFT INBOX — the backbone for Agents 6–11 (back-office
+-- AI staff). Every agent registers here with a status and last-run signal
+-- so the operator has one page that says "what's my AI staff doing right
+-- now, and what's waiting on my sign-off." Client-facing agents 1–5 are
+-- also registered for completeness — they can share the observability
+-- surface without changing their existing wiring.
+--
+-- agent_drafts is the human-in-the-loop review queue. Every external
+-- action an agent proposes (email response, invoice categorization,
+-- LinkedIn post, contract renewal alert acknowledgement, etc.) is
+-- persisted as a draft. Roger reviews and either sends, edits, or
+-- rejects. Nothing goes out without approval.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS agent_registry (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_key TEXT UNIQUE NOT NULL,
+  agent_number INT NOT NULL,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  description TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'planned', 'paused', 'deprecated')),
+  human_in_loop BOOLEAN NOT NULL DEFAULT TRUE,
+  last_run_at TIMESTAMPTZ,
+  last_run_status TEXT,
+  config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_registry_status ON agent_registry (status);
+
+CREATE TABLE IF NOT EXISTS agent_drafts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_key TEXT NOT NULL REFERENCES agent_registry (agent_key) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  category TEXT,
+  subject TEXT,
+  source_ref TEXT,
+  payload JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'sent', 'archived')),
+  operator_notes TEXT,
+  reviewed_at TIMESTAMPTZ,
+  reviewer_email TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_drafts_status_created ON agent_drafts (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_drafts_agent ON agent_drafts (agent_key, status);
+
+-- Seed the eleven agents. ON CONFLICT keeps this idempotent so Roger's
+-- config on any agent (e.g., PAUSED while wiring Gmail) survives re-deploy.
+INSERT INTO agent_registry (agent_key, agent_number, name, role, description, status, human_in_loop) VALUES
+  ('agent1_sanitizer',        1, 'Sanitizer',                  'Client-facing',    'Reads incoming PDFs, emails, and phone-call transcripts; extracts structured shipment data.',                     'active',  TRUE),
+  ('agent2_compliance',       2, 'Compliance',                 'Client-facing',    'Flags HS classification, valuation, and rules-of-origin issues before entry; monitors tariff changes.',            'active',  TRUE),
+  ('agent3_rate_optimization',3, 'Rate Optimization',          'Client-facing',    'Audits carrier invoices; benchmarks vs spot market; identifies overcharges and refund opportunities.',            'active',  TRUE),
+  ('agent4_equipment',        4, 'Equipment',                  'Client-facing',    'Matches loads to trailer type, mode, DG requirements; flags equipment gaps.',                                     'active',  TRUE),
+  ('agent5_client_chat',      5, 'Client Chat',                'Client-facing',    'Portal chat for client questions; escalates complex issues to the operator.',                                     'active',  TRUE),
+  ('agent6_chief_of_staff',   6, 'Chief of Staff',             'Back-office',      'Inbox triage, calendar coordination, task follow-through, morning brief for Roger.',                              'active',  TRUE),
+  ('agent7_executive_assist', 7, 'Executive Assistant',        'Back-office',      'Scheduling, meeting preparation, follow-up drafting.',                                                             'planned', TRUE),
+  ('agent8_finance',          8, 'Finance Operator',           'Back-office',      'Stripe/QuickBooks reconciliation, expense categorization, monthly P&L drafting.',                                  'planned', TRUE),
+  ('agent9_marketing',        9, 'Marketing Operator',         'Back-office',      'Weekly newsletter drafts, LinkedIn post drafts, cold-outreach drafts personalized per prospect.',                  'planned', TRUE),
+  ('agent10_legal_watcher',  10, 'Legal & Compliance Watcher', 'Back-office',      'Contract renewal alerts, insurance expiries, regulatory deadlines, POA renewals, DG cert renewals.',               'planned', TRUE),
+  ('agent11_hr',             11, 'HR & Onboarding',            'Back-office',      'Draft offer letters, employee onboarding checklists, policy responses. Deferred until first hire.',                'planned', TRUE)
+ON CONFLICT (agent_key) DO NOTHING;
