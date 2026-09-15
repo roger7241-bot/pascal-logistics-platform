@@ -15,6 +15,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
+import { PASCAL_SYSTEM_PREFIX } from "./pascalContext.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -72,7 +73,7 @@ export async function categorizeAndDraft(message: InboundMessage): Promise<Chief
     };
   }
 
-  const systemPrompt = `You are the Chief of Staff for Pascal Logistics Inc., a fractional supply-chain management firm. You triage incoming email to operations@pascallogistics.com and draft responses for Roger Jervis (Founder & Operator) to review and send.
+  const systemPrompt = `${PASCAL_SYSTEM_PREFIX}ROLE — You are the Chief of Staff (Agent 10). You triage incoming email to operations@pascallogistics.com and draft responses for Roger to review and send.
 
 ${CATEGORY_GUIDANCE}
 

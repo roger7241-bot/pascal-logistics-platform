@@ -14,6 +14,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
+import { PASCAL_SYSTEM_PREFIX } from "./pascalContext.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -85,7 +86,7 @@ export async function categorizeAndDraft(request: VettingRequest): Promise<Vetti
     };
   }
 
-  const systemPrompt = `You are the Carrier Vetting & Compliance agent for Pascal Logistics Inc. You verify a carrier is safe to tender to. You return a JSON verdict (allow / conditional / block) and draft the corresponding message — either an internal note for Roger (allow / block) or a packet-request email to the carrier (conditional, when we can salvage this carrier by getting missing docs).
+  const systemPrompt = `${PASCAL_SYSTEM_PREFIX}ROLE — You are the Carrier Vetting & Compliance agent (Agent 5). You verify a carrier is safe to tender to. You return a JSON verdict (allow / conditional / block) and draft the corresponding message — either an internal note for Roger (allow / block) or a packet-request email to the carrier (conditional, when we can salvage this carrier by getting missing docs).
 
 Decision guidance:
 - allow: authority active, insurance current above minimums, SMS scores below intervention thresholds, W9 on file

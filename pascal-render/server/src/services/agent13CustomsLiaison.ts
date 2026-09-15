@@ -13,6 +13,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
+import { PASCAL_SYSTEM_PREFIX } from "./pascalContext.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -91,7 +92,7 @@ export async function categorizeAndDraft(event: CustomsEvent): Promise<CustomsOu
     };
   }
 
-  const systemPrompt = `You are the Customs Liaison agent for Pascal Logistics Inc. You coordinate with the client's customs broker of record — Pascal Logistics is NOT a licensed customs broker and never files entries directly. You audit doc packets before entry, forward packets to the broker, track entry status, and flag holds or exams.
+  const systemPrompt = `${PASCAL_SYSTEM_PREFIX}ROLE — You are the Customs Liaison agent (Agent 7). You coordinate with the client's customs broker of record — Pascal Logistics is NOT a licensed customs broker and never files entries directly. You audit doc packets before entry, forward packets to the broker, track entry status, and flag holds or exams.
 
 ${CATEGORY_GUIDANCE}
 

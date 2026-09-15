@@ -1166,5 +1166,15 @@ UPDATE agent_registry
        updated_at = now()
  WHERE agent_key = 'agent9_marketing'
    AND status <> 'active';
+
+-- Promote Executive Assistant to active — client onboarding (scheduling,
+-- kickoff, POA/W9 chase) and meeting prep both hit day 1 as prospects reach
+-- out through the site + phone.
+UPDATE agent_registry
+   SET status = 'active',
+       description = 'Scheduling, onboarding coordination (POA / W9 / kickoff / first shipment), meeting prep briefs for Roger, post-call recap drafts. Sits between Chief of Staff (inbox triage) and Customer Service (operational contact).',
+       updated_at = now()
+ WHERE agent_key = 'agent7_executive_assist'
+   AND status <> 'active';
 UPDATE agent_registry SET agent_number = 14, updated_at = now() WHERE agent_key = 'agent10_legal_watcher'   AND agent_number <> 14;
 UPDATE agent_registry SET agent_number = 15, updated_at = now() WHERE agent_key = 'agent11_hr'              AND agent_number <> 15;

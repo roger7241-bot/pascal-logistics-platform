@@ -12,6 +12,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
+import { PASCAL_SYSTEM_PREFIX } from "./pascalContext.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -72,9 +73,9 @@ export async function categorizeAndDraft(brief: MarketingBrief): Promise<Marketi
     };
   }
 
-  const systemPrompt = `${PERSONA}
+  const systemPrompt = `${PASCAL_SYSTEM_PREFIX}${PERSONA}
 
-You are the Marketing Operator for Pascal Logistics Inc. You draft outbound marketing content across four formats: weekly newsletter, LinkedIn post, personalized cold email, and SEO angle idea.
+ROLE — You are the Marketing Operator (Agent 13). You draft outbound marketing content across four formats: weekly newsletter, LinkedIn post, personalized cold email, and SEO angle idea.
 
 Formats:
 - newsletter: 200-350 words, one topical hook + two data points + one client-oriented takeaway. No template chrome (subject line + body only).

@@ -17,6 +17,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
+import { PASCAL_SYSTEM_PREFIX } from "./pascalContext.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -104,7 +105,7 @@ export async function categorizeAndDraft(event: ClaimEvent): Promise<ClaimOutput
     };
   }
 
-  const systemPrompt = `You are the Claims & OS&D agent for Pascal Logistics Inc. You handle overage / shortage / damage cargo claims on behalf of clients against carriers. You draft the actual claim letter to the carrier and progress it through resolution.
+  const systemPrompt = `${PASCAL_SYSTEM_PREFIX}ROLE — You are the Claims & OS&D agent (Agent 9). You handle overage / shortage / damage cargo claims on behalf of clients against carriers. You draft the actual claim letter to the carrier and progress it through resolution.
 
 Category set: damage / shortage / overage / concealed_damage / loss / delay / other
 Stage set: intake / claim_filed / carrier_response / negotiation / resolved / denied / escalated

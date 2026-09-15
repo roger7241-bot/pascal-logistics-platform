@@ -9,7 +9,7 @@
 // ============================================================================
 
 import { useEffect, useState } from "react";
-import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone } from "lucide-react";
+import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone, CalendarClock } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api, ApiError } from "../config/api";
 
@@ -63,6 +63,10 @@ interface MarketingPayload {
   brief: { format: string; audience: string; topic: string };
   output: DraftOutputBase & { hashtags: string[]; recipientRole: "external" | "internal" };
 }
+interface EaPayload {
+  request: { eventType: string; contactName?: string; contactCompany?: string; requestDetail: string; meetingWhenIso?: string };
+  output: DraftOutputBase & { recipientRole: "prospect" | "client" | "internal" };
+}
 
 interface DraftRow {
   id: string;
@@ -70,7 +74,7 @@ interface DraftRow {
   kind: string;
   category: string | null;
   subject: string | null;
-  payload: ChiefPayload | BookingPayload | CustomsPayload | VettingPayload | ClaimsPayload | FinancePayload | MarketingPayload;
+  payload: ChiefPayload | BookingPayload | CustomsPayload | VettingPayload | ClaimsPayload | FinancePayload | MarketingPayload | EaPayload;
   status: string;
   created_at: string;
 }
@@ -88,13 +92,14 @@ const PRIORITY_CLASS: Record<DraftOutputBase["priority"], string> = {
   low: "bg-sky-50 text-sky-700 border-sky-200",
 };
 
-type SimTab = "chief" | "booking" | "customs" | "vetting" | "claims" | "finance" | "marketing";
+type SimTab = "chief" | "booking" | "customs" | "vetting" | "claims" | "finance" | "marketing" | "ea";
 const SIM_TABS: { key: SimTab; label: string; slot: number; icon: typeof Sparkles }[] = [
   { key: "vetting",   label: "Carrier Vetting", slot: 5, icon: ShieldAlert },
   { key: "booking",   label: "Booking & Dispatch", slot: 6, icon: Truck },
   { key: "customs",   label: "Customs", slot: 7, icon: ShieldCheck },
   { key: "claims",    label: "Claims & OS&D", slot: 9, icon: PackageX },
   { key: "chief",     label: "Chief of Staff", slot: 10, icon: Sparkles },
+  { key: "ea",        label: "Executive Assistant", slot: 11, icon: CalendarClock },
   { key: "finance",   label: "Finance", slot: 12, icon: DollarSign },
   { key: "marketing", label: "Marketing", slot: 13, icon: Megaphone },
 ];
@@ -124,6 +129,10 @@ function draftContext(d: DraftRow): { label: string; header: string; subject: st
     case "agent9_marketing": {
       const p = d.payload as MarketingPayload;
       return { label: "Marketing", header: `${p.brief.format.replace(/_/g, " ")} · ${p.brief.audience}`, subject: p.brief.topic };
+    }
+    case "agent7_executive_assist": {
+      const p = d.payload as EaPayload;
+      return { label: "Executive Assistant", header: `${p.request.contactName ?? p.request.contactCompany ?? "contact"}${p.request.meetingWhenIso ? ` · ${p.request.meetingWhenIso.slice(0, 10)}` : ""}`, subject: `${p.request.eventType.replace(/_/g, " ")}: ${p.request.requestDetail.slice(0, 100)}` };
     }
     default: {
       const p = d.payload as ChiefPayload;
@@ -223,6 +232,17 @@ export function AgentsPage() {
   const [mkProspectRole, setMkProspectRole] = useState("Operations Manager");
   const [mkPainSignal, setMkPainSignal] = useState("just posted a job for a logistics coordinator");
   const [mkCta, setMkCta] = useState("open to a 20-min call to see if we'd be a fit");
+
+  // EA simulate state — defaults produce a scheduling reply for an intro request
+  const [eaEventType, setEaEventType] = useState("prospect_intro");
+  const [eaContactName, setEaContactName] = useState("Sarah Chen");
+  const [eaContactCompany, setEaContactCompany] = useState("Acme Industrial Parts");
+  const [eaContactRole, setEaContactRole] = useState("Operations Manager");
+  const [eaContactEmail, setEaContactEmail] = useState("sarah@acmeindustrial.com");
+  const [eaRequestDetail, setEaRequestDetail] = useState("Saw your reply, would love to set up 20 minutes next week to talk about our cross-border LTL out of Ohio into Ontario.");
+  const [eaMeetingWhen, setEaMeetingWhen] = useState("");
+  const [eaOnboardingStep, setEaOnboardingStep] = useState("");
+  const [eaPriorContext, setEaPriorContext] = useState("Cold email replied to yesterday; roughly 20 loads/mo, no full-time supply-chain person.");
 
   async function load() {
     setLoading(true);
@@ -335,6 +355,18 @@ export function AgentsPage() {
           prospectRole: mkProspectRole || undefined,
           currentPainSignal: mkPainSignal || undefined,
           desiredCta: mkCta,
+        });
+      } else if (simTab === "ea") {
+        await api.executiveAssistantSimulate({
+          eventType: eaEventType,
+          contactName: eaContactName || undefined,
+          contactCompany: eaContactCompany || undefined,
+          contactRole: eaContactRole || undefined,
+          contactEmail: eaContactEmail || undefined,
+          requestDetail: eaRequestDetail,
+          meetingWhenIso: eaMeetingWhen || undefined,
+          onboardingStep: eaOnboardingStep || undefined,
+          priorContext: eaPriorContext || undefined,
         });
       }
       await load();
@@ -535,6 +567,38 @@ export function AgentsPage() {
                   </div>
                 )}
                 <input value={mkCta} onChange={(e) => setMkCta(e.target.value)} placeholder="Desired CTA" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              </>
+            )}
+            {simTab === "ea" && (
+              <>
+                <select value={eaEventType} onChange={(e) => setEaEventType(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                  <option value="prospect_intro">Prospect wants intro call</option>
+                  <option value="meeting_prep">Prep me for a call (internal brief)</option>
+                  <option value="onboarding_check">Onboarding check-in with client</option>
+                  <option value="post_call">Post-call follow-up</option>
+                  <option value="internal_reminder">Internal reminder to Roger</option>
+                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={eaContactName} onChange={(e) => setEaContactName(e.target.value)} placeholder="Contact name" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={eaContactRole} onChange={(e) => setEaContactRole(e.target.value)} placeholder="Contact role" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={eaContactCompany} onChange={(e) => setEaContactCompany(e.target.value)} placeholder="Contact company" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={eaContactEmail} onChange={(e) => setEaContactEmail(e.target.value)} placeholder="Contact email" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <textarea value={eaRequestDetail} onChange={(e) => setEaRequestDetail(e.target.value)} rows={3} placeholder="What they want / the request detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                {eaEventType === "meeting_prep" && (
+                  <input value={eaMeetingWhen} onChange={(e) => setEaMeetingWhen(e.target.value)} placeholder="Meeting when (YYYY-MM-DDTHH:MM)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                )}
+                {eaEventType === "onboarding_check" && (
+                  <select value={eaOnboardingStep} onChange={(e) => setEaOnboardingStep(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                    <option value="">— pick current onboarding step —</option>
+                    <option value="poa_pending">POA pending both sides</option>
+                    <option value="w9_received">W9 received</option>
+                    <option value="kickoff_scheduled">Kickoff call scheduled</option>
+                    <option value="stripe_active">Stripe retainer active</option>
+                    <option value="first_shipment">First shipment moving</option>
+                  </select>
+                )}
+                <textarea value={eaPriorContext} onChange={(e) => setEaPriorContext(e.target.value)} rows={2} placeholder="Prior context (email thread, previous notes)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
               </>
             )}
             {simTab === "claims" && (

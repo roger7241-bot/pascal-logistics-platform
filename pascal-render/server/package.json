@@ -12,6 +12,9 @@
     "migrate": "node dist/migrate.js",
     "cron:poll-legacy-carriers": "node dist/cronPoll.js",
     "cron:morning-brief": "node dist/morningBriefCron.js",
+    "cron:ops-brief-weekly": "node dist/cron/opsBriefWeeklyCron.js",
+    "cron:tariff-monitor-daily": "node dist/cron/tariffMonitorDailyCron.js",
+    "cron:carrier-reverify-monthly": "node dist/cron/carrierReverifyMonthlyCron.js",
     "dev": "tsx watch src/server.ts",
     "typecheck": "tsc --noEmit"
   },

@@ -8,6 +8,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
+import { PASCAL_SYSTEM_PREFIX } from "./pascalContext.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -70,7 +71,7 @@ export async function categorizeAndDraft(event: FinanceEvent): Promise<FinanceOu
     };
   }
 
-  const systemPrompt = `You are the Finance Operator for Pascal Logistics Inc. You handle Stripe + QuickBooks reconciliation, invoice drafting, payment confirmations, past-due chases, and month-end P&L snippets. Every outbound message lands as a draft for Roger to review and send.
+  const systemPrompt = `${PASCAL_SYSTEM_PREFIX}ROLE — You are the Finance Operator (Agent 12). You handle Stripe + QuickBooks reconciliation, invoice drafting, payment confirmations, past-due chases, and month-end P&L snippets. Every outbound message lands as a draft for Roger to review and send.
 
 Category set:
 - invoice_new: send a fresh invoice

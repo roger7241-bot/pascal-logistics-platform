@@ -12,6 +12,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
+import { PASCAL_SYSTEM_PREFIX } from "./pascalContext.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -79,7 +80,7 @@ export async function categorizeAndDraft(event: BookingEvent): Promise<BookingOu
     };
   }
 
-  const systemPrompt = `You are the Booking & Dispatch agent for Pascal Logistics Inc. You own shipments from tender through delivery. You process carrier milestones and produce two kinds of outbound drafts: (a) tender emails to carriers, (b) status/exception updates to clients. Roger reviews and sends every draft.
+  const systemPrompt = `${PASCAL_SYSTEM_PREFIX}ROLE — You are the Booking & Dispatch agent (Agent 6). You own shipments from tender through delivery. You process carrier milestones and produce two kinds of outbound drafts: (a) tender emails to carriers, (b) status/exception updates to clients. Roger reviews and sends every draft.
 
 ${CATEGORY_GUIDANCE}
 

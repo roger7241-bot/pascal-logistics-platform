@@ -178,6 +178,17 @@ export const api = {
     currentPainSignal?: string;
     desiredCta: string;
   }) => request<TResult>("/api/operator/agents/marketing/simulate", { method: "POST", body: payload }),
+  executiveAssistantSimulate: <TResult = unknown>(payload: {
+    eventType: string;
+    contactName?: string;
+    contactEmail?: string;
+    contactCompany?: string;
+    contactRole?: string;
+    requestDetail: string;
+    meetingWhenIso?: string;
+    onboardingStep?: string;
+    priorContext?: string;
+  }) => request<TResult>("/api/operator/agents/executive-assistant/simulate", { method: "POST", body: payload }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>

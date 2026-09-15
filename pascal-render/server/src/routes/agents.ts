@@ -20,6 +20,7 @@ import { categorizeAndDraft as vettingCategorize, persistDraft as vettingPersist
 import { categorizeAndDraft as claimsCategorize, persistDraft as claimsPersist, type ClaimEvent, type ClaimStage } from "../services/agent15ClaimsOsd.js";
 import { categorizeAndDraft as financeCategorize, persistDraft as financePersist, type FinanceEvent } from "../services/agent8Finance.js";
 import { categorizeAndDraft as marketingCategorize, persistDraft as marketingPersist, type MarketingBrief, type MarketingFormat } from "../services/agent9Marketing.js";
+import { categorizeAndDraft as eaCategorize, persistDraft as eaPersist, type EaRequest } from "../services/agent7ExecutiveAssistant.js";
 
 export function createAgentsRouter(): Router {
   const router = Router();
@@ -267,6 +268,28 @@ export function createAgentsRouter(): Router {
     };
     const output = await marketingCategorize(brief);
     const draft = await marketingPersist(brief, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  // Simulate an EA request — scheduling, meeting prep, onboarding, follow-up.
+  router.post("/agents/executive-assistant/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.eventType || !b.requestDetail) {
+      return res.status(400).json({ error: "eventType and requestDetail are required." });
+    }
+    const request: EaRequest = {
+      eventType: String(b.eventType),
+      contactName: b.contactName ? String(b.contactName) : undefined,
+      contactEmail: b.contactEmail ? String(b.contactEmail) : undefined,
+      contactCompany: b.contactCompany ? String(b.contactCompany) : undefined,
+      contactRole: b.contactRole ? String(b.contactRole) : undefined,
+      requestDetail: String(b.requestDetail),
+      meetingWhenIso: b.meetingWhenIso ? String(b.meetingWhenIso) : undefined,
+      onboardingStep: b.onboardingStep ? String(b.onboardingStep) : undefined,
+      priorContext: b.priorContext ? String(b.priorContext) : undefined,
+    };
+    const output = await eaCategorize(request);
+    const draft = await eaPersist(request, output, `simulated:${Date.now()}`);
     return res.status(201).json({ draft, output });
   });
 
