@@ -23,7 +23,7 @@ import { logActivity } from "../services/activityLog.js";
 import { sendOperationalEmail } from "../services/agentMailDispatch.js";
 import { sendDriverSms } from "../services/twilioMessaging.js";
 import { getPriority1LtlRates, type Priority1LineItem } from "../services/priority1.js";
-import { getFxRates, convertFromUsd } from "../services/fxRates.js";
+import { getFxRates } from "../services/fxRates.js";
 import { pool } from "../db/pool.js";
 import type { ClientShipmentSummary } from "../types/shipment.js";
 import type { WsManager } from "../ws/wsManager.js";
