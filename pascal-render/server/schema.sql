@@ -958,3 +958,16 @@ CREATE TABLE IF NOT EXISTS client_carrier_rates (
 
 CREATE INDEX IF NOT EXISTS idx_client_carrier_rates_org_id ON client_carrier_rates (org_id);
 CREATE INDEX IF NOT EXISTS idx_client_carrier_rates_lane ON client_carrier_rates (org_id, origin_zip, destination_zip);
+
+-- ============================================================================
+-- CLIENT CAPABILITIES — per-account feature flags derived from the client's
+-- shipping profile. Populated at onboarding, editable later. Domestic-only
+-- clients don't get tariff monitoring / USMCA panels etc. surfaced in
+-- their portal — those features are enabled only for cross-border profiles.
+-- JSONB (not a set of boolean columns) because the profile evolves and
+-- fields like trackedHsCodes are variable-length arrays. Default '{}' so
+-- an existing account without a profile just gets nothing extra rendered.
+-- ============================================================================
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS client_capabilities JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE INDEX IF NOT EXISTS idx_accounts_capabilities_gin ON accounts USING GIN (client_capabilities);

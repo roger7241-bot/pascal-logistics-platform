@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { Search, Loader2, ArrowRight, TrendingDown, TrendingUp, AlertCircle, Info } from "lucide-react";
 import { api, ApiError } from "../config/api";
+import { WeightInput } from "./WeightInput";
 
 interface IncumbentRate {
   id: string;
@@ -116,10 +117,9 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
           Pickup date
           <input value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} type="date" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none" />
         </label>
-        <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-          Total weight (lbs)
-          <input value={weightLbs} onChange={(e) => setWeightLbs(e.target.value)} required type="number" min="1" placeholder="275" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none" />
-        </label>
+        <div>
+          <WeightInput valueLbs={weightLbs} onChangeLbs={setWeightLbs} required minLbs={1} placeholder="275" label="Total weight" />
+        </div>
         <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
           Freight class
           <input value={freightClass} onChange={(e) => setFreightClass(e.target.value)} placeholder="150" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none" />

@@ -71,6 +71,23 @@ export interface Account {
   requiresHazmat: boolean;
   preferredCarrierScacs: string[];
   accountStatus: string;
+  clientCapabilities: ClientCapabilities;
+}
+
+// Per-account feature flags derived from the client's shipping profile.
+// Nothing outside the accounts schema owns this — it's the source of
+// truth for which features render in the client portal and which the
+// operator surfaces to that account.
+export interface ClientCapabilities {
+  shipsUSToCanada?: boolean;
+  shipsCanadaToUS?: boolean;
+  shipsDomesticOnly?: boolean;
+  shipsInternational?: boolean; // ocean/air non-USMCA
+  brokerOfRecord?: string;
+  currentForwarder?: string;
+  trackedHsCodes?: string[];
+  primaryLanes?: string[]; // "originZip-destZip"
+  monthlyLoadsEstimate?: string; // "4-10", "10-20", etc.
 }
 
 function rowToAccount(row: Record<string, unknown>): Account {
@@ -127,6 +144,7 @@ function rowToAccount(row: Record<string, unknown>): Account {
     requiresHazmat: row.requires_hazmat as boolean,
     preferredCarrierScacs: (row.preferred_carrier_scacs as string[]) ?? [],
     accountStatus: row.account_status as Account["accountStatus"],
+    clientCapabilities: (row.client_capabilities as ClientCapabilities) ?? {},
   };
 }
 
@@ -302,6 +320,23 @@ export function createAccountsRouter(): Router {
     if (accountResult.rowCount === 0) return res.status(404).json({ error: `No account on file with id ${req.params.id}.` });
     const logs = await getAuditLogs({ orgId: accountResult.rows[0].org_id, limit: 50 });
     return res.status(200).json({ logs });
+  });
+
+  // Update the per-account feature flags (shipping profile → which portal
+  // features render for this client). Full-replacement PATCH: send the
+  // whole capabilities object each call, easier for the CRM form to keep
+  // state predictable than PATCH-partial semantics.
+  router.patch("/accounts/:id/capabilities", async (req: Request, res: Response) => {
+    const { capabilities } = req.body ?? {};
+    if (!capabilities || typeof capabilities !== "object" || Array.isArray(capabilities)) {
+      return res.status(400).json({ error: "capabilities (object) is required." });
+    }
+    const result = await pool.query(
+      "UPDATE accounts SET client_capabilities = $1::jsonb WHERE id = $2 RETURNING *",
+      [JSON.stringify(capabilities), req.params.id],
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: `No account on file with id ${req.params.id}.` });
+    return res.status(200).json(rowToAccount(result.rows[0]));
   });
 
   return router;

@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { Search, Loader2, TrendingDown, TrendingUp, Info, AlertCircle, ArrowRight } from "lucide-react";
 import { api, ApiError } from "../config/api";
+import { WeightInput } from "./WeightInput";
 
 interface IncumbentRate {
   id: string;
@@ -133,9 +134,9 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
         <label className="col-span-2 text-xs font-medium text-slate-600 uppercase tracking-wide md:col-span-1">Pickup date
           <input value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} type="date" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
         </label>
-        <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide md:col-span-1">Weight (lbs)
-          <input value={weightLbs} onChange={(e) => setWeightLbs(e.target.value)} required type="number" min="1" placeholder="500" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
-        </label>
+        <div className="col-span-1 md:col-span-1">
+          <WeightInput valueLbs={weightLbs} onChangeLbs={setWeightLbs} required minLbs={1} placeholder="500" label="Weight" />
+        </div>
         <label className="col-span-1 text-xs font-medium text-slate-600 uppercase tracking-wide md:col-span-1">Class
           <input value={freightClass} onChange={(e) => setFreightClass(e.target.value)} placeholder="150" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none" />
         </label>

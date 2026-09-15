@@ -4,6 +4,8 @@ import { OperatorHeader } from "../components/OperatorHeader";
 import { KpiCard, ProgressBar } from "../components/KpiCard";
 import { AddressAutocompleteInput } from "../components/AddressAutocompleteInput";
 import { CurrentCarrierRates } from "../components/CurrentCarrierRates";
+import { ClientCapabilitiesEditor } from "../components/ClientCapabilitiesEditor";
+import { capabilityLabel, capabilityBadgeClass, type ClientCapabilities } from "../lib/clientCapabilities";
 import { subdivisionsForCountry } from "../lib/subdivisions";
 import { api } from "../config/api";
 
@@ -56,6 +58,7 @@ interface Account {
   requiresHazmat: boolean;
   preferredCarrierScacs: string[];
   accountStatus: string;
+  clientCapabilities?: ClientCapabilities;
   facilityCount: number;
   poaStatus: string;
   usmcaCertCount: number;
@@ -93,9 +96,10 @@ const POA_LABEL: Record<string, { label: string; class: string }> = {
   expired_needs_renewal: { label: "POA Expired", class: "bg-rose-100 text-rose-700" },
 };
 
-const DETAIL_TABS = ["overview", "compliance", "facilities", "freight", "carriers", "rates"] as const;
+const DETAIL_TABS = ["overview", "profile", "compliance", "facilities", "freight", "carriers", "rates"] as const;
 const TAB_LABEL: Record<(typeof DETAIL_TABS)[number], string> = {
   overview: "Overview & Contacts",
+  profile: "Shipping Profile",
   compliance: "Customs Compliance & Vault",
   facilities: "Linked Facility SOPs",
   freight: "Active & Historical Freight",
@@ -363,6 +367,7 @@ export function CrmAccountsPage() {
                   )}
                   <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${poa.class}`}>{poa.label}</span>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLASS[acc.accountStatus]}`}>{acc.accountStatus}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide ${capabilityBadgeClass(capabilityLabel(acc.clientCapabilities))}`}>{capabilityLabel(acc.clientCapabilities)}</span>
                   <ChevronRight size={14} className="text-slate-300" />
                 </button>
               );
@@ -507,6 +512,17 @@ export function CrmAccountsPage() {
                         </div>
                       )}
                     </div>
+                  )}
+
+                  {detailTab === "profile" && (
+                    <ClientCapabilitiesEditor
+                      accountId={detail.account.id}
+                      initial={detail.account.clientCapabilities ?? {}}
+                      onSaved={(next) => {
+                        setDetail((prev) => prev ? { ...prev, account: { ...prev.account, clientCapabilities: next } } : prev);
+                        setAccounts((prev) => prev.map((a) => a.id === detail.account.id ? { ...a, clientCapabilities: next } : a));
+                      }}
+                    />
                   )}
 
                   {detailTab === "compliance" && (

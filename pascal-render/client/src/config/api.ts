@@ -126,6 +126,7 @@ export const api = {
   uploadVaultDocument: <TResult = unknown>(payload: unknown) => request<TResult>("/api/operator/vault", { method: "POST", body: payload }),
   vaultDownloadUrl: <TResult = unknown>(id: string) => request<TResult>(`/api/operator/vault/${id}/download`),
   accountAuditLog: <TResult = unknown>(accountId: string) => request<TResult>(`/api/operator/accounts/${accountId}/audit-log`),
+  updateAccountCapabilities: <TResult = unknown>(accountId: string, capabilities: unknown) => request<TResult>(`/api/operator/accounts/${accountId}/capabilities`, { method: "PATCH", body: { capabilities } }),
   executiveDrafts: <TResult = unknown>(status?: string) => request<TResult>(`/api/operator/executive-drafts${status ? `?status=${status}` : ""}`),
   decideExecutiveDraft: <TResult = unknown>(id: string, decision: "approved" | "rejected") => request<TResult>(`/api/operator/executive-drafts/${id}/decide`, { method: "PATCH", body: { decision } }),
   calendarEvents: <TResult = unknown>(orgId?: string) => request<TResult>(`/api/calendar/events${orgId ? `?orgId=${encodeURIComponent(orgId)}` : ""}`),
