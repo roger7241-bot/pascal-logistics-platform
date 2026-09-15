@@ -9,7 +9,7 @@
 // ============================================================================
 
 import { useEffect, useState } from "react";
-import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX } from "lucide-react";
+import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api, ApiError } from "../config/api";
 
@@ -55,6 +55,14 @@ interface ClaimsPayload {
   event: { shipmentRef: string; mode: string; carrier: string; eventType: string; deliveredAtIso?: string };
   output: DraftOutputBase & { stage: string; claimValueUsd: number; filingWindowDays: number; documentationGaps: string[]; recipientRole: "carrier" | "client" | "internal" };
 }
+interface FinancePayload {
+  event: { clientName: string; eventType: string; invoiceNumber?: string; amountUsd?: number; currency?: string; daysPastDue?: number };
+  output: DraftOutputBase & { amountUsd: number; recipientRole: "client" | "internal" };
+}
+interface MarketingPayload {
+  brief: { format: string; audience: string; topic: string };
+  output: DraftOutputBase & { hashtags: string[]; recipientRole: "external" | "internal" };
+}
 
 interface DraftRow {
   id: string;
@@ -62,7 +70,7 @@ interface DraftRow {
   kind: string;
   category: string | null;
   subject: string | null;
-  payload: ChiefPayload | BookingPayload | CustomsPayload | VettingPayload | ClaimsPayload;
+  payload: ChiefPayload | BookingPayload | CustomsPayload | VettingPayload | ClaimsPayload | FinancePayload | MarketingPayload;
   status: string;
   created_at: string;
 }
@@ -80,13 +88,15 @@ const PRIORITY_CLASS: Record<DraftOutputBase["priority"], string> = {
   low: "bg-sky-50 text-sky-700 border-sky-200",
 };
 
-type SimTab = "chief" | "booking" | "customs" | "vetting" | "claims";
+type SimTab = "chief" | "booking" | "customs" | "vetting" | "claims" | "finance" | "marketing";
 const SIM_TABS: { key: SimTab; label: string; slot: number; icon: typeof Sparkles }[] = [
-  { key: "vetting", label: "Carrier Vetting", slot: 5, icon: ShieldAlert },
-  { key: "booking", label: "Booking & Dispatch", slot: 6, icon: Truck },
-  { key: "customs", label: "Customs", slot: 7, icon: ShieldCheck },
-  { key: "claims",  label: "Claims & OS&D", slot: 9, icon: PackageX },
-  { key: "chief",   label: "Chief of Staff", slot: 10, icon: Sparkles },
+  { key: "vetting",   label: "Carrier Vetting", slot: 5, icon: ShieldAlert },
+  { key: "booking",   label: "Booking & Dispatch", slot: 6, icon: Truck },
+  { key: "customs",   label: "Customs", slot: 7, icon: ShieldCheck },
+  { key: "claims",    label: "Claims & OS&D", slot: 9, icon: PackageX },
+  { key: "chief",     label: "Chief of Staff", slot: 10, icon: Sparkles },
+  { key: "finance",   label: "Finance", slot: 12, icon: DollarSign },
+  { key: "marketing", label: "Marketing", slot: 13, icon: Megaphone },
 ];
 
 function draftContext(d: DraftRow): { label: string; header: string; subject: string } {
@@ -106,6 +116,14 @@ function draftContext(d: DraftRow): { label: string; header: string; subject: st
     case "agent15_claims_osd": {
       const p = d.payload as ClaimsPayload;
       return { label: "Claims & OS&D", header: `${p.event.carrier} · ${p.event.mode.toUpperCase()}`, subject: `${p.event.shipmentRef}: ${p.event.eventType}` };
+    }
+    case "agent8_finance": {
+      const p = d.payload as FinancePayload;
+      return { label: "Finance", header: `${p.event.clientName}${p.event.invoiceNumber ? ` · Inv ${p.event.invoiceNumber}` : ""}${p.event.amountUsd ? ` · $${p.event.amountUsd.toLocaleString()} ${p.event.currency ?? "USD"}` : ""}${p.event.daysPastDue ? ` · ${p.event.daysPastDue}d past due` : ""}`, subject: `${p.event.clientName}: ${p.event.eventType}` };
+    }
+    case "agent9_marketing": {
+      const p = d.payload as MarketingPayload;
+      return { label: "Marketing", header: `${p.brief.format.replace(/_/g, " ")} · ${p.brief.audience}`, subject: p.brief.topic };
     }
     default: {
       const p = d.payload as ChiefPayload;
@@ -183,6 +201,28 @@ export function AgentsPage() {
   const [clHasPod, setClHasPod] = useState(true);
   const [clDeliveredAt, setClDeliveredAt] = useState(new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10));
   const [clStage, setClStage] = useState<"intake" | "claim_filed" | "carrier_response" | "negotiation" | "resolved" | "denied" | "escalated">("intake");
+
+  // Finance simulate state — defaults produce a 45-day past-due retainer chase
+  const [fnClient, setFnClient] = useState("Meridian Cold Chain");
+  const [fnClientEmail, setFnClientEmail] = useState("ap@meridiancoldchain.com");
+  const [fnEventType, setFnEventType] = useState("past_due");
+  const [fnEventDetail, setFnEventDetail] = useState("Retainer invoice unpaid — Stripe subscription attempt failed twice.");
+  const [fnInvoice, setFnInvoice] = useState("PL-INV-1042");
+  const [fnAmount, setFnAmount] = useState("2400");
+  const [fnCurrency, setFnCurrency] = useState<"USD" | "CAD">("USD");
+  const [fnDaysPastDue, setFnDaysPastDue] = useState("45");
+  const [fnService, setFnService] = useState("Tier 1.5 retainer — March 2026");
+
+  // Marketing simulate state — defaults produce a cold email to a real ICP
+  const [mkFormat, setMkFormat] = useState<"newsletter" | "linkedin_post" | "cold_email" | "seo_angle">("cold_email");
+  const [mkAudience, setMkAudience] = useState("US manufacturers with cross-border freight to Canada");
+  const [mkTopic, setMkTopic] = useState("USMCA certificate of origin — the one form that turns duty on or off");
+  const [mkKeyPoints, setMkKeyPoints] = useState("Most SMB shipments file at MFN when the USMCA cert is missing\nThe cert saves 3-10% duty on qualifying goods\nWe check every packet before entry so this doesn't happen");
+  const [mkProspectName, setMkProspectName] = useState("Sarah Chen");
+  const [mkProspectCompany, setMkProspectCompany] = useState("Acme Industrial Parts");
+  const [mkProspectRole, setMkProspectRole] = useState("Operations Manager");
+  const [mkPainSignal, setMkPainSignal] = useState("just posted a job for a logistics coordinator");
+  const [mkCta, setMkCta] = useState("open to a 20-min call to see if we'd be a fit");
 
   async function load() {
     setLoading(true);
@@ -275,6 +315,26 @@ export function AgentsPage() {
           hasPhotos: clHasPhotos, hasBolNotation: clHasBolNote, hasSignedPod: clHasPod,
           deliveredAtIso: clDeliveredAt || undefined,
           stage: clStage,
+        });
+      } else if (simTab === "finance") {
+        await api.financeSimulate({
+          clientName: fnClient, clientEmail: fnClientEmail || undefined,
+          eventType: fnEventType, eventDetail: fnEventDetail,
+          invoiceNumber: fnInvoice || undefined,
+          amountUsd: Number(fnAmount) || 0,
+          currency: fnCurrency,
+          daysPastDue: fnDaysPastDue === "" ? undefined : Number(fnDaysPastDue),
+          serviceDescription: fnService || undefined,
+        });
+      } else if (simTab === "marketing") {
+        await api.marketingSimulate({
+          format: mkFormat, audience: mkAudience, topic: mkTopic,
+          keyPoints: mkKeyPoints.split("\n").map((s) => s.trim()).filter(Boolean),
+          prospectName: mkProspectName || undefined,
+          prospectCompany: mkProspectCompany || undefined,
+          prospectRole: mkProspectRole || undefined,
+          currentPainSignal: mkPainSignal || undefined,
+          desiredCta: mkCta,
         });
       }
       await load();
@@ -422,6 +482,59 @@ export function AgentsPage() {
                   <input value={vtSmsMaint} onChange={(e) => setVtSmsMaint(e.target.value)} placeholder="SMS Maint" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
                 </div>
                 <label className="flex items-center gap-1 text-[11px] text-slate-700"><input type="checkbox" checked={vtHasW9} onChange={(e) => setVtHasW9(e.target.checked)} /> W9 on file</label>
+              </>
+            )}
+            {simTab === "finance" && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={fnClient} onChange={(e) => setFnClient(e.target.value)} placeholder="Client name" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={fnClientEmail} onChange={(e) => setFnClientEmail(e.target.value)} placeholder="Client email" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <select value={fnEventType} onChange={(e) => setFnEventType(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                  <option value="invoice_new">New invoice (send)</option>
+                  <option value="payment_received">Payment received (thank you)</option>
+                  <option value="past_due">Past-due chase</option>
+                  <option value="monthly_close">Monthly P&amp;L snippet (internal)</option>
+                  <option value="reconciliation">Stripe / QB reconciliation note (internal)</option>
+                </select>
+                <textarea value={fnEventDetail} onChange={(e) => setFnEventDetail(e.target.value)} rows={2} placeholder="Event detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <div className="grid grid-cols-3 gap-2">
+                  <input value={fnInvoice} onChange={(e) => setFnInvoice(e.target.value)} placeholder="Invoice #" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={fnAmount} onChange={(e) => setFnAmount(e.target.value)} placeholder="Amount" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <select value={fnCurrency} onChange={(e) => setFnCurrency(e.target.value as "USD" | "CAD")} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                    <option value="USD">USD</option>
+                    <option value="CAD">CAD</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={fnDaysPastDue} onChange={(e) => setFnDaysPastDue(e.target.value)} placeholder="Days past due" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={fnService} onChange={(e) => setFnService(e.target.value)} placeholder="Service description" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+              </>
+            )}
+            {simTab === "marketing" && (
+              <>
+                <select value={mkFormat} onChange={(e) => setMkFormat(e.target.value as typeof mkFormat)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                  <option value="cold_email">Cold email (personalized)</option>
+                  <option value="linkedin_post">LinkedIn post</option>
+                  <option value="newsletter">Weekly newsletter</option>
+                  <option value="seo_angle">SEO angle idea (internal)</option>
+                </select>
+                <input value={mkAudience} onChange={(e) => setMkAudience(e.target.value)} placeholder="Audience" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <input value={mkTopic} onChange={(e) => setMkTopic(e.target.value)} placeholder="Topic" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <textarea value={mkKeyPoints} onChange={(e) => setMkKeyPoints(e.target.value)} rows={3} placeholder="Key points (one per line, up to 5)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                {mkFormat === "cold_email" && (
+                  <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[10px] font-mono uppercase tracking-wide text-slate-500">Prospect personalization</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={mkProspectName} onChange={(e) => setMkProspectName(e.target.value)} placeholder="Prospect name" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                      <input value={mkProspectRole} onChange={(e) => setMkProspectRole(e.target.value)} placeholder="Prospect role" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                    </div>
+                    <input value={mkProspectCompany} onChange={(e) => setMkProspectCompany(e.target.value)} placeholder="Prospect company" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                    <input value={mkPainSignal} onChange={(e) => setMkPainSignal(e.target.value)} placeholder="Pain signal to reference" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  </div>
+                )}
+                <input value={mkCta} onChange={(e) => setMkCta(e.target.value)} placeholder="Desired CTA" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
               </>
             )}
             {simTab === "claims" && (

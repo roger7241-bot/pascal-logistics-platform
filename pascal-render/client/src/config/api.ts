@@ -155,6 +155,29 @@ export const api = {
     stage?: "intake" | "claim_filed" | "carrier_response" | "negotiation" | "resolved" | "denied" | "escalated";
     claimAmountUsd?: number;
   }) => request<TResult>("/api/operator/agents/claims-osd/simulate", { method: "POST", body: payload }),
+  financeSimulate: <TResult = unknown>(payload: {
+    clientName: string;
+    clientEmail?: string;
+    eventType: string;
+    eventDetail?: string;
+    invoiceNumber?: string;
+    amountUsd?: number;
+    currency?: "USD" | "CAD";
+    daysPastDue?: number;
+    dueAtIso?: string;
+    serviceDescription?: string;
+  }) => request<TResult>("/api/operator/agents/finance/simulate", { method: "POST", body: payload }),
+  marketingSimulate: <TResult = unknown>(payload: {
+    format: "newsletter" | "linkedin_post" | "cold_email" | "seo_angle";
+    audience: string;
+    topic: string;
+    keyPoints: string[];
+    prospectName?: string;
+    prospectCompany?: string;
+    prospectRole?: string;
+    currentPainSignal?: string;
+    desiredCta: string;
+  }) => request<TResult>("/api/operator/agents/marketing/simulate", { method: "POST", body: payload }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>

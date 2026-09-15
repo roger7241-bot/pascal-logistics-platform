@@ -1147,5 +1147,24 @@ UPDATE agent_registry SET agent_number = 10, updated_at = now() WHERE agent_key 
 UPDATE agent_registry SET agent_number = 11, updated_at = now() WHERE agent_key = 'agent7_executive_assist' AND agent_number <> 11;
 UPDATE agent_registry SET agent_number = 12, updated_at = now() WHERE agent_key = 'agent8_finance'          AND agent_number <> 12;
 UPDATE agent_registry SET agent_number = 13, updated_at = now() WHERE agent_key = 'agent9_marketing'        AND agent_number <> 13;
+
+-- Promote Finance and Marketing to active so retainer invoicing and
+-- prospect outreach can start on day 1. Marketing description expands
+-- to include cold outreach + newsletter + LinkedIn draft output;
+-- Finance description expands to include Stripe / QuickBooks
+-- reconciliation and past-due chase drafts.
+UPDATE agent_registry
+   SET status = 'active',
+       description = 'Stripe + QuickBooks reconciliation, retainer + one-off invoice drafting, payment confirmation replies, past-due chase drafts (30/60/90 day cadence), monthly P&L snapshot for Roger.',
+       updated_at = now()
+ WHERE agent_key = 'agent8_finance'
+   AND status <> 'active';
+
+UPDATE agent_registry
+   SET status = 'active',
+       description = 'Weekly newsletter drafts (tariff moves + border cams + client wins), LinkedIn post drafts, personalized cold-outreach drafts per prospect (industry, freight volume, current pain), lightweight SEO angle suggestions. Roger reviews every send.',
+       updated_at = now()
+ WHERE agent_key = 'agent9_marketing'
+   AND status <> 'active';
 UPDATE agent_registry SET agent_number = 14, updated_at = now() WHERE agent_key = 'agent10_legal_watcher'   AND agent_number <> 14;
 UPDATE agent_registry SET agent_number = 15, updated_at = now() WHERE agent_key = 'agent11_hr'              AND agent_number <> 15;

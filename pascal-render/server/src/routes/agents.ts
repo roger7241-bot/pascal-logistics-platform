@@ -18,6 +18,8 @@ import { categorizeAndDraft as bookingCategorize, persistDraft as bookingPersist
 import { categorizeAndDraft as customsCategorize, persistDraft as customsPersist, type CustomsEvent } from "../services/agent13CustomsLiaison.js";
 import { categorizeAndDraft as vettingCategorize, persistDraft as vettingPersist, type VettingRequest } from "../services/agent14CarrierVetting.js";
 import { categorizeAndDraft as claimsCategorize, persistDraft as claimsPersist, type ClaimEvent, type ClaimStage } from "../services/agent15ClaimsOsd.js";
+import { categorizeAndDraft as financeCategorize, persistDraft as financePersist, type FinanceEvent } from "../services/agent8Finance.js";
+import { categorizeAndDraft as marketingCategorize, persistDraft as marketingPersist, type MarketingBrief, type MarketingFormat } from "../services/agent9Marketing.js";
 
 export function createAgentsRouter(): Router {
   const router = Router();
@@ -216,6 +218,55 @@ export function createAgentsRouter(): Router {
     };
     const output = await claimsCategorize(event);
     const draft = await claimsPersist(event, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  // Simulate a finance event — new invoice, payment received, or past-due chase.
+  router.post("/agents/finance/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.clientName || !b.eventType) {
+      return res.status(400).json({ error: "clientName and eventType are required." });
+    }
+    const event: FinanceEvent = {
+      clientName: String(b.clientName),
+      clientEmail: b.clientEmail ? String(b.clientEmail) : undefined,
+      eventType: String(b.eventType),
+      eventDetail: String(b.eventDetail ?? ""),
+      invoiceNumber: b.invoiceNumber ? String(b.invoiceNumber) : undefined,
+      amountUsd: typeof b.amountUsd === "number" ? b.amountUsd : undefined,
+      currency: b.currency === "CAD" ? "CAD" : "USD",
+      daysPastDue: typeof b.daysPastDue === "number" ? b.daysPastDue : undefined,
+      paidAtIso: b.paidAtIso ? String(b.paidAtIso) : undefined,
+      dueAtIso: b.dueAtIso ? String(b.dueAtIso) : undefined,
+      stripeRef: b.stripeRef ? String(b.stripeRef) : undefined,
+      quickbooksRef: b.quickbooksRef ? String(b.quickbooksRef) : undefined,
+      serviceDescription: b.serviceDescription ? String(b.serviceDescription) : undefined,
+    };
+    const output = await financeCategorize(event);
+    const draft = await financePersist(event, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  // Simulate a marketing brief — newsletter, LinkedIn, cold email, or SEO angle.
+  router.post("/agents/marketing/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.audience || !b.topic || !b.desiredCta) {
+      return res.status(400).json({ error: "audience, topic, and desiredCta are required." });
+    }
+    const validFormats: MarketingFormat[] = ["newsletter", "linkedin_post", "cold_email", "seo_angle", "other"];
+    const brief: MarketingBrief = {
+      format: validFormats.includes(b.format) ? b.format : "cold_email",
+      audience: String(b.audience),
+      topic: String(b.topic),
+      keyPoints: Array.isArray(b.keyPoints) ? b.keyPoints.map(String).slice(0, 5) : [],
+      prospectName: b.prospectName ? String(b.prospectName) : undefined,
+      prospectCompany: b.prospectCompany ? String(b.prospectCompany) : undefined,
+      prospectRole: b.prospectRole ? String(b.prospectRole) : undefined,
+      currentPainSignal: b.currentPainSignal ? String(b.currentPainSignal) : undefined,
+      desiredCta: String(b.desiredCta),
+    };
+    const output = await marketingCategorize(brief);
+    const draft = await marketingPersist(brief, output, `simulated:${Date.now()}`);
     return res.status(201).json({ draft, output });
   });
 
