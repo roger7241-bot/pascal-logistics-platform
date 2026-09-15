@@ -3,8 +3,20 @@ import { Compass } from "lucide-react";
 import { SimulationButton } from "./SimulationButton";
 import { useAuth } from "../contexts/AuthContext";
 
-const NAV_ITEMS = [
-  { to: "/", label: "Manager Hub" },
+// Role-scoped nav — operators get their own hub links, client users see
+// only client-appropriate destinations. Previously "Manager Hub" was
+// visible on the Client Portal but pointed at an operator-only route,
+// which either sent operators to CeoHub (confusing when they were on
+// the Client Portal tab) or bounced clients back to their portal.
+const OPERATOR_NAV_ITEMS = [
+  { to: "/operator", label: "Manager Hub" },
+  { to: "/operator/operations", label: "Operations Queue" },
+  { to: "/operator/carriers", label: "Carrier Desk" },
+  { to: "/operator/crm", label: "CRM Accounts" },
+  { to: "/border-telemetry", label: "Border Telemetry" },
+];
+
+const CLIENT_NAV_ITEMS = [
   { to: "/client-portal", label: "Client Portal" },
   { to: "/client-portal/compliance", label: "Compliance Vault" },
   { to: "/client-portal/calendar", label: "Calendar" },
@@ -14,7 +26,8 @@ const NAV_ITEMS = [
 export function AppHeader() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  const navItems = user?.role === "client" ? CLIENT_NAV_ITEMS : OPERATOR_NAV_ITEMS;
 
   async function handleLogout() {
     await logout();
@@ -41,7 +54,7 @@ export function AppHeader() {
         </div>
       </div>
       <nav className="flex gap-1 border-t border-slate-800 px-2">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <Link
             key={item.to}
             to={item.to}

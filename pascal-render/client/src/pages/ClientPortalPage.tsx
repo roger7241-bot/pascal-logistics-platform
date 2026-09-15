@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Package, Clock, ShieldCheck, PiggyBank, Plus, Upload, Search, MessageCircle, Truck, TrainFront, Ship, Plane, Settings, Trash2, X, Copy, Check } from "lucide-react";
+import { Package, Clock, ShieldCheck, CheckCircle2, Plus, Upload, Search, MessageCircle, Truck, TrainFront, Ship, Plane, Settings, Trash2, X, Copy, Check } from "lucide-react";
 import { AppHeader } from "../components/AppHeader";
 import { ShipmentDetailDrawer } from "../components/ShipmentDetailDrawer";
 import { ClientShipmentIntakeWizard } from "../components/ClientShipmentIntakeWizard";
@@ -55,11 +55,18 @@ const STATUS_CHIP_BAR_CLASS: Record<StatusChip, string> = {
 // and capital-saved figures need the same live rate-benchmark and border
 // telemetry history a production deployment would accumulate over time;
 // these are representative figures pending that history existing.
+// Portal KPIs are supply-chain-manager shaped, not freight-savings shaped.
+// Shippers who log in are looking at what the desk is doing on their
+// behalf: operational continuity, compliance status, and when the next
+// executive brief lands — not a dollar-saved bragging line. Dollar
+// savings on freight aren't why they hired us; they hired us instead of
+// hiring a full-time supply chain manager. The value story is the desk
+// being there and functioning, not $X saved on carrier rates.
 const RETAINER_SUMMARY = {
   activeShipments: 4,
   onTimeBorderClearancePct: 94,
   avgBorderTransitHours: 6.4,
-  capitalSavedMtdUsd: 8420,
+  exceptionsResolvedMtd: 7,
 };
 
 export function ClientPortalPage() {
@@ -138,10 +145,10 @@ export function ClientPortalPage() {
           />
           <KpiCard icon={Clock} label="Avg border transit" value={`${RETAINER_SUMMARY.avgBorderTransitHours}h`} />
           <KpiCard
-            icon={PiggyBank}
-            label="Capital saved MTD"
-            value={`$${RETAINER_SUMMARY.capitalSavedMtdUsd.toLocaleString()}`}
-            status={RETAINER_SUMMARY.capitalSavedMtdUsd > 0 ? "good" : "neutral"}
+            icon={CheckCircle2}
+            label="Exceptions resolved MTD"
+            value={String(RETAINER_SUMMARY.exceptionsResolvedMtd)}
+            status="good"
           />
         </div>
 
