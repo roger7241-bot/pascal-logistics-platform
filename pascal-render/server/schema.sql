@@ -1001,3 +1001,48 @@ CREATE TABLE IF NOT EXISTS booking_requests (
 
 CREATE INDEX IF NOT EXISTS idx_booking_requests_org_status ON booking_requests (org_id, status);
 CREATE INDEX IF NOT EXISTS idx_booking_requests_status_created ON booking_requests (status, created_at DESC);
+
+-- ============================================================================
+-- TARIFF UPDATES — the source of truth for the tariff-monitoring service.
+-- Rows are produced by a cron that polls the Federal Register, USITC HTS
+-- API, and CBSA D-Memoranda, then uses Claude to summarize each policy
+-- action in plain English + tag it with the affected HS code(s), direction
+-- (US↔CA), and mechanism (Section 232 / 301 / USMCA / CBSA D-Memo / etc.).
+-- Client Portal filters this table by the client's tracked_hs_codes
+-- capability so a bedliner importer doesn't see steel policy notices.
+--
+-- Demo seed rows below are illustrative — they read as realistic policy
+-- actions but are not automatically kept current until the poll cron is
+-- wired up. ON CONFLICT DO NOTHING makes the seed idempotent across
+-- deploys.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS tariff_updates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_ref TEXT UNIQUE,
+  hs_code TEXT NOT NULL,
+  hs_description TEXT,
+  direction TEXT NOT NULL CHECK (direction IN ('US_TO_CA', 'CA_TO_US', 'US_INBOUND', 'CA_INBOUND', 'BILATERAL')),
+  mechanism TEXT NOT NULL,
+  headline TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  old_rate NUMERIC(6,2),
+  new_rate NUMERIC(6,2),
+  rate_delta_pct NUMERIC(6,2),
+  effective_date DATE,
+  source_url TEXT,
+  severity TEXT NOT NULL DEFAULT 'notice' CHECK (severity IN ('critical', 'notice', 'info')),
+  published_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tariff_updates_hs ON tariff_updates (hs_code);
+CREATE INDEX IF NOT EXISTS idx_tariff_updates_published ON tariff_updates (published_at DESC);
+
+INSERT INTO tariff_updates (external_ref, hs_code, hs_description, direction, mechanism, headline, summary, old_rate, new_rate, rate_delta_pct, effective_date, source_url, severity, published_at)
+VALUES
+  ('SEED-232-STEEL-7208', '7208.10', 'Hot-rolled steel, in coils', 'CA_TO_US', 'Section 232', 'Section 232: HS 7208.10 assessed at 25% on Canadian-origin steel', 'USTR modifies the Section 232 derivative-steel list; hot-rolled coils entering the US from Canada now assessed at 25% ad valorem regardless of USMCA origin. Prior exemption withdrawn for material entered after the effective date.', 0.0, 25.0, 25.0, CURRENT_DATE + INTERVAL '2 days', 'https://www.federalregister.gov/', 'critical', now() - INTERVAL '18 hours'),
+  ('SEED-301-TEXTILE-6302', '6302.32', 'Bed linens, man-made fibres', 'US_INBOUND', 'Section 301', 'CBP ruling: Chinese-origin textiles finished in Canada do not confer substantial transformation', 'CBP Ruling HQ H329844 confirms that cut-and-sew of Chinese-origin bed linens in Canada is insufficient for substantial transformation under 19 CFR 102.21. Section 301 rate of 27.5% now applies at US entry.', 12.5, 27.5, 15.0, CURRENT_DATE - INTERVAL '3 days', 'https://rulings.cbp.gov/', 'critical', now() - INTERVAL '2 days'),
+  ('SEED-CBSA-D11-VALUATION', '9999.99', 'All commodities', 'US_TO_CA', 'CBSA D-Memo', 'CBSA D11-4-2 amendment: revised valuation guidance for related-party transactions', 'CBSA has published D-Memo amendments to D11-4-2 clarifying transfer-pricing adjustments as post-importation changes to declared value. Applies to entries filed on or after the effective date.', NULL, NULL, NULL, CURRENT_DATE + INTERVAL '7 days', 'https://www.cbsa-asfc.gc.ca/', 'notice', now() - INTERVAL '4 days'),
+  ('SEED-USMCA-AUTO-8703', '8703.23', 'Passenger vehicles, 1500–3000cc engine', 'BILATERAL', 'USMCA', 'USMCA rules-of-origin: annual RVC threshold advances to 75%', 'The regional value content requirement for passenger vehicles under USMCA advances to 75% on the scheduled step-up date. Vehicles not meeting the new threshold lose preferential treatment and revert to MFN rates.', 0.0, 2.5, 2.5, CURRENT_DATE + INTERVAL '90 days', 'https://ustr.gov/usmca', 'notice', now() - INTERVAL '5 days'),
+  ('SEED-321-DEMINIMIS-REVIEW', '9999.99', 'De minimis shipments', 'US_INBOUND', 'Section 321', 'USTR proposes further tightening of Section 321 de minimis for Chinese-origin goods', 'Notice of proposed rulemaking further narrows the Section 321 $800 de minimis window for goods of Chinese origin regardless of routing. Comments open for 30 days. Not yet in force.', NULL, NULL, NULL, NULL, 'https://ustr.gov/', 'info', now() - INTERVAL '7 days'),
+  ('SEED-BEEF-0201-QUOTA', '0201.20', 'Beef, boneless, chilled', 'CA_TO_US', 'TRQ', 'US TRQ on Canadian beef: quarterly quota 68% filled', 'Quarter-to-date fill on the tariff-rate quota for Canadian-origin boneless beef stands at 68%. Over-quota rate remains 26.4%. Historical patterns suggest quota exhaustion around week 11.', 0.0, 0.0, NULL, CURRENT_DATE - INTERVAL '1 day', 'https://www.usitc.gov/tata/hts', 'info', now() - INTERVAL '8 days')
+ON CONFLICT (external_ref) DO NOTHING;

@@ -476,5 +476,118 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     return res.status(201).json({ bookingRequest: result.rows[0] });
   });
 
+  // ==========================================================================
+  // CLIENT PROFILE — returns the account + shipping-profile capabilities
+  // for the authenticated client. Used by the Client Portal to gate which
+  // widgets render (cross-border only, etc.).
+  // ==========================================================================
+  router.get("/profile", async (req: Request, res: Response) => {
+    const authOrgId = req.authUser?.orgId;
+    if (!authOrgId) return res.status(400).json({ error: "This account has no org on file." });
+    const result = await pool.query(
+      "SELECT id, org_id, company_name, retainer_tier, client_capabilities, billing_currency FROM accounts WHERE org_id = $1",
+      [authOrgId],
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: "Account not found for this org." });
+    const row = result.rows[0];
+    return res.status(200).json({
+      profile: {
+        id: row.id,
+        orgId: row.org_id,
+        companyName: row.company_name,
+        retainerTier: row.retainer_tier,
+        billingCurrency: row.billing_currency,
+        clientCapabilities: row.client_capabilities ?? {},
+      },
+    });
+  });
+
+  // ==========================================================================
+  // TARIFF UPDATES — filtered to the client's tracked HS codes when their
+  // capabilities have any, otherwise returns the most recent regardless.
+  // Feeds the client-facing Tariff Watch widget. Cross-border only —
+  // callers should already have gated on client_capabilities.
+  // ==========================================================================
+  router.get("/tariff-updates", async (req: Request, res: Response) => {
+    const authOrgId = req.authUser?.orgId;
+    if (!authOrgId) return res.status(400).json({ error: "This account has no org on file." });
+
+    const capResult = await pool.query("SELECT client_capabilities FROM accounts WHERE org_id = $1", [authOrgId]);
+    const caps = capResult.rowCount ? (capResult.rows[0].client_capabilities ?? {}) : {};
+    const tracked: string[] = Array.isArray(caps.trackedHsCodes) ? caps.trackedHsCodes : [];
+    const limit = Math.min(Number(req.query.limit) || 12, 50);
+
+    // Filter by tracked codes when the client set them; otherwise return
+    // the freshest updates so a newly-onboarded client still sees the
+    // Tariff Watch widget populated. Match at the chapter level (first 4
+    // digits) so "8703" matches "8703.23" too.
+    const params: unknown[] = [limit];
+    let where = "";
+    if (tracked.length > 0) {
+      const chapters = tracked.map((c) => c.replace(/[^0-9.]/g, "").slice(0, 4)).filter(Boolean);
+      if (chapters.length > 0) {
+        params.push(chapters.map((c) => `${c}%`));
+        where = `WHERE hs_code LIKE ANY($2::text[])`;
+      }
+    }
+    const result = await pool.query(
+      `SELECT id, hs_code, hs_description, direction, mechanism, headline, summary, old_rate, new_rate, rate_delta_pct, effective_date, source_url, severity, published_at
+       FROM tariff_updates ${where} ORDER BY published_at DESC LIMIT $1`,
+      params,
+    );
+    return res.status(200).json({ tariffUpdates: result.rows, trackedHsCodes: tracked });
+  });
+
+  // ==========================================================================
+  // PORTAL SUMMARY — aggregated widget payload for the client dashboard:
+  // ops brief cadence, POA/USMCA documents current, carrier scorecard.
+  // Everything scoped to req.authUser.orgId; no orgId ever accepted from
+  // the request.
+  // ==========================================================================
+  router.get("/portal-summary", async (req: Request, res: Response) => {
+    const authOrgId = req.authUser?.orgId;
+    if (!authOrgId) return res.status(400).json({ error: "This account has no org on file." });
+
+    const [poaResult, usmcaResult, expiringDocs, carrierResult] = await Promise.all([
+      pool.query("SELECT status, updated_at FROM poa_records WHERE org_id = $1 ORDER BY updated_at DESC LIMIT 1", [authOrgId]),
+      pool.query("SELECT COUNT(*) AS count, MAX(expires_at) AS next_expiry FROM vault_documents WHERE org_id = $1 AND category = 'usmca_certificate'", [authOrgId]),
+      pool.query("SELECT COUNT(*) AS count FROM vault_documents WHERE org_id = $1 AND expires_at IS NOT NULL AND expires_at < now() + INTERVAL '30 days'", [authOrgId]),
+      pool.query(
+        `SELECT carrier_name, integration_status, on_time_pct, claims_rate_pct
+         FROM carrier_accounts WHERE org_id = $1
+         ORDER BY on_time_pct DESC NULLS LAST LIMIT 5`,
+        [authOrgId],
+      ),
+    ]);
+
+    // Compute next scheduled ops brief — Monday 07:00 in America/Los_Angeles.
+    const now = new Date();
+    const nextMonday = new Date(now);
+    const daysUntilMonday = (8 - now.getDay()) % 7 || 7;
+    nextMonday.setDate(now.getDate() + daysUntilMonday);
+    nextMonday.setHours(7, 0, 0, 0);
+
+    return res.status(200).json({
+      opsBrief: {
+        cadence: "weekly",
+        deliveryTime: "07:00 PT Monday",
+        nextIso: nextMonday.toISOString(),
+      },
+      documentsCurrent: {
+        poaStatus: poaResult.rows[0]?.status ?? "pending_upload",
+        poaRefreshedAt: poaResult.rows[0]?.updated_at ?? null,
+        usmcaCertCount: Number(usmcaResult.rows[0]?.count ?? 0),
+        usmcaNextExpiry: usmcaResult.rows[0]?.next_expiry ?? null,
+        expiringSoonCount: Number(expiringDocs.rows[0]?.count ?? 0),
+      },
+      carrierScorecard: carrierResult.rows.map((r) => ({
+        carrierName: r.carrier_name,
+        integrationStatus: r.integration_status,
+        onTimePct: r.on_time_pct !== null ? Number(r.on_time_pct) : undefined,
+        claimsRatePct: r.claims_rate_pct !== null ? Number(r.claims_rate_pct) : undefined,
+      })),
+    });
+  });
+
   return router;
 }

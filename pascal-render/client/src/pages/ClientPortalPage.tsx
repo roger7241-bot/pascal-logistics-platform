@@ -8,6 +8,12 @@ import { ChatbotWidget } from "../components/ChatbotWidget";
 import { ClientRerouteSignoffCard } from "../components/ClientRerouteSignoffCard";
 import { KpiCard, ProgressBar } from "../components/KpiCard";
 import { SpotRateExplorer } from "../components/SpotRateExplorer";
+import { TariffWatchWidget } from "../components/TariffWatchWidget";
+import { OpsBriefCard } from "../components/OpsBriefCard";
+import { DocumentsCurrentCard } from "../components/DocumentsCurrentCard";
+import { CarrierScorecardWidget } from "../components/CarrierScorecardWidget";
+import { useClientProfile } from "../hooks/useClientProfile";
+import { isCrossBorder } from "../lib/clientCapabilities";
 import { api } from "../config/api";
 import type { ClientShipmentSummary, StatusChip } from "../types/shipment";
 import type { RerouteAdvisory } from "../types/reroute";
@@ -70,6 +76,8 @@ const RETAINER_SUMMARY = {
 };
 
 export function ClientPortalPage() {
+  const { profile } = useClientProfile();
+  const showCrossBorderWidgets = isCrossBorder(profile?.clientCapabilities);
   const [shipments, setShipments] = useState<ClientShipmentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<ClientShipmentSummary | undefined>(undefined);
@@ -167,6 +175,21 @@ export function ClientPortalPage() {
             <MessageCircle size={15} /> Ask Agent 5
           </button>
         </div>
+
+        {/* Supply-chain manager scoreboard — signals what the desk is
+            doing on the client's behalf. Ops brief cadence and carrier
+            scorecard render for every client; Documents Current renders
+            for cross-border clients (POA/USMCA aren't relevant otherwise);
+            Tariff Watch renders for cross-border shippers filtered to
+            their tracked HS codes. */}
+        <div className={`grid grid-cols-1 gap-3 ${showCrossBorderWidgets ? "sm:grid-cols-2" : "sm:grid-cols-2"}`}>
+          <OpsBriefCard />
+          {showCrossBorderWidgets && <DocumentsCurrentCard />}
+        </div>
+
+        {showCrossBorderWidgets && <TariffWatchWidget />}
+
+        <CarrierScorecardWidget />
 
         {/* Spot Rate Explorer — self-serve rate lookup for planning ahead.
             "Request booking" doesn't book directly; it flags the operator
