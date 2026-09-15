@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node dist/migrate.js && node dist/server.js",
     "migrate": "node dist/migrate.js",
     "cron:poll-legacy-carriers": "node dist/cronPoll.js",
     "cron:morning-brief": "node dist/morningBriefCron.js",
