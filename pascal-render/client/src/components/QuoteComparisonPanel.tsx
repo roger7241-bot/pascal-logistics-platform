@@ -9,10 +9,13 @@
 // flags simulated:true and quotes will be empty — visible as a warning.
 // ============================================================================
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, Loader2, ArrowRight, TrendingDown, TrendingUp, AlertCircle, Info } from "lucide-react";
 import { api, ApiError } from "../config/api";
 import { WeightInput } from "./WeightInput";
+
+type DisplayCurrency = "USD" | "CAD" | "MXN";
+const CURRENCY_SYMBOL: Record<DisplayCurrency, string> = { USD: "$", CAD: "CA$", MXN: "MX$" };
 
 interface IncumbentRate {
   id: string;
@@ -20,6 +23,7 @@ interface IncumbentRate {
   serviceLevel?: string;
   transitDays?: number;
   totalRateUsd: number;
+  totalRateDisplay?: number;
   effectiveDateIso?: string;
   rateSource: string;
 }
@@ -29,8 +33,10 @@ interface ComparedQuote {
   serviceLevel?: string;
   transitDays?: number;
   totalUsd: number;
+  totalDisplay?: number;
   expirationDateIso?: string;
   savingsVsIncumbentUsd?: number;
+  savingsVsIncumbentDisplay?: number;
   savingsVsIncumbentPct?: number;
 }
 
@@ -38,6 +44,8 @@ interface CompareResponse {
   incumbent?: IncumbentRate;
   quotes: ComparedQuote[];
   mode?: "LTL" | "FTL";
+  displayCurrency?: DisplayCurrency;
+  fxRate?: number;
   priority1Simulated: boolean;
   priority1Demo?: boolean;
   priority1Error?: string;
@@ -63,6 +71,11 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
   const [units, setUnits] = useState("1");
   const [mode, setMode] = useState<"LTL" | "FTL">("LTL");
   const [trailerType, setTrailerType] = useState<string>("Dry Van");
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>("USD");
+
+  useEffect(() => {
+    setResult(undefined);
+  }, [mode]);
 
   const [result, setResult] = useState<CompareResponse | undefined>();
   const [loading, setLoading] = useState(false);
@@ -77,6 +90,17 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
     setResult(undefined);
 
     try {
+      const baseItem: Record<string, unknown> = {
+        packagingType: mode === "FTL" ? "Full Trailer" : packagingType,
+        units: Number(units),
+        pieces: Number(units),
+        totalWeightLbs: Number(weightLbs),
+        lengthIn: 48,
+        widthIn: 40,
+        heightIn: 40,
+      };
+      if (mode === "LTL") baseItem.freightClass = freightClass;
+
       const response = await api.quoteCompare<CompareResponse>({
         orgId,
         originZip: originZip.trim(),
@@ -84,18 +108,8 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
         pickupDateIso: `${pickupDate}T00:00:00Z`,
         mode,
         trailerType: mode === "FTL" ? trailerType : undefined,
-        items: [
-          {
-            freightClass: mode === "LTL" ? freightClass : "100",
-            packagingType: mode === "FTL" ? "Full Trailer" : packagingType,
-            units: Number(units),
-            pieces: Number(units),
-            totalWeightLbs: Number(weightLbs),
-            lengthIn: 48,
-            widthIn: 40,
-            heightIn: 40,
-          },
-        ],
+        displayCurrency,
+        items: [baseItem],
       });
       setResult(response);
     } catch (err) {
@@ -107,9 +121,21 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center gap-2 mb-4">
-        <Search className="w-5 h-5 text-slate-700" />
-        <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex items-center gap-2">
+          <Search className="w-5 h-5 text-slate-700" />
+          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+        </div>
+        <select
+          value={displayCurrency}
+          onChange={(e) => setDisplayCurrency(e.target.value as DisplayCurrency)}
+          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 focus:border-slate-500 focus:outline-none"
+          title="Display currency"
+        >
+          <option value="USD">USD</option>
+          <option value="CAD">CAD</option>
+          <option value="MXN">MXN</option>
+        </select>
       </div>
 
       <form onSubmit={runComparison} className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
@@ -227,7 +253,7 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
               <div className="text-base font-semibold text-slate-900">{result.incumbent.carrierName}</div>
               <div className="text-xs text-slate-500">{result.incumbent.serviceLevel ?? "—"} · {result.incumbent.transitDays ? `${result.incumbent.transitDays}d transit` : "—"} · effective {result.incumbent.effectiveDateIso ?? "—"} · {result.incumbent.rateSource}</div>
             </div>
-            <div className="text-2xl font-mono font-semibold text-slate-900">${result.incumbent.totalRateUsd.toFixed(2)}</div>
+            <div className="text-2xl font-mono font-semibold text-slate-900">{CURRENCY_SYMBOL[displayCurrency]}{(result.incumbent.totalRateDisplay ?? result.incumbent.totalRateUsd).toFixed(2)}</div>
           </div>
         </div>
       )}
@@ -256,12 +282,12 @@ export function QuoteComparisonPanel({ orgId, defaultOriginZip = "", defaultDest
                     <td className="py-2 pr-3 font-medium text-slate-900">{q.carrierName}</td>
                     <td className="py-2 pr-3 text-slate-600">{q.serviceLevel ?? "—"}</td>
                     <td className="py-2 pr-3 text-right text-slate-600">{q.transitDays ? `${q.transitDays}d` : "—"}</td>
-                    <td className="py-2 pr-3 text-right font-mono font-medium text-slate-900">${q.totalUsd.toFixed(2)}</td>
+                    <td className="py-2 pr-3 text-right font-mono font-medium text-slate-900">{CURRENCY_SYMBOL[displayCurrency]}{(q.totalDisplay ?? q.totalUsd).toFixed(2)}</td>
                     <td className={`py-2 pr-3 text-right font-mono ${savingsClass}`}>
                       {savings === undefined ? "—" : (
                         <span className="inline-flex items-center gap-1 justify-end">
                           {savings > 0 ? <TrendingDown className="w-3 h-3" /> : savings < 0 ? <TrendingUp className="w-3 h-3" /> : null}
-                          ${Math.abs(savings).toFixed(2)}
+                          {CURRENCY_SYMBOL[displayCurrency]}{(q.savingsVsIncumbentDisplay !== undefined ? Math.abs(q.savingsVsIncumbentDisplay) : Math.abs(savings)).toFixed(2)}
                         </span>
                       )}
                     </td>

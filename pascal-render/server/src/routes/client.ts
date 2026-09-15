@@ -23,6 +23,7 @@ import { logActivity } from "../services/activityLog.js";
 import { sendOperationalEmail } from "../services/agentMailDispatch.js";
 import { sendDriverSms } from "../services/twilioMessaging.js";
 import { getPriority1LtlRates, type Priority1LineItem } from "../services/priority1.js";
+import { getFxRates, convertFromUsd } from "../services/fxRates.js";
 import { pool } from "../db/pool.js";
 import type { ClientShipmentSummary } from "../types/shipment.js";
 import type { WsManager } from "../ws/wsManager.js";
@@ -342,9 +343,10 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
   // is shopping a lane.
   // ==========================================================================
   router.post("/quote-compare", async (req: Request, res: Response) => {
-    const { originZip, destinationZip, pickupDateIso, items, mode, trailerType } = req.body ?? {};
+    const { originZip, destinationZip, pickupDateIso, items, mode, trailerType, displayCurrency } = req.body ?? {};
     const authOrgId = req.authUser?.orgId;
     const normalizedMode: "LTL" | "FTL" = mode === "FTL" ? "FTL" : "LTL";
+    const normalizedCurrency: "USD" | "CAD" | "MXN" = displayCurrency === "CAD" || displayCurrency === "MXN" ? displayCurrency : "USD";
 
     if (!authOrgId) {
       return res.status(400).json({ error: "This account has no org on file — contact your Pascal Logistics operator." });
@@ -396,6 +398,20 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     });
     compared.sort((a, b) => a.totalUsd - b.totalUsd);
 
+    // FX conversion for non-USD displays. USD stays authoritative in
+    // `*Usd` fields for internal math; display values are separate.
+    let fxRate = 1;
+    if (normalizedCurrency !== "USD") {
+      const fx = await getFxRates();
+      fxRate = fx.rates[normalizedCurrency];
+    }
+    const displayQuotes = compared.map((q) => ({
+      ...q,
+      totalDisplay: Math.round(q.totalUsd * fxRate * 100) / 100,
+      savingsVsIncumbentDisplay: q.savingsVsIncumbentUsd !== undefined ? Math.round(q.savingsVsIncumbentUsd * fxRate * 100) / 100 : undefined,
+    }));
+    const displayIncumbent = incumbent ? { ...incumbent, totalRateDisplay: Math.round(incumbent.totalRateUsd * fxRate * 100) / 100 } : undefined;
+
     // Signal to the operator side: this client just shopped a lane.
     const bestSavings = compared.length && incumbentRate !== undefined
       ? Math.max(0, ...compared.map((q) => q.savingsVsIncumbentUsd ?? 0))
@@ -408,13 +424,56 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     );
 
     return res.status(200).json({
-      incumbent,
-      quotes: compared,
+      incumbent: displayIncumbent,
+      quotes: displayQuotes,
       mode: normalizedMode,
+      displayCurrency: normalizedCurrency,
+      fxRate,
       priority1Simulated: p1Response.simulated,
       priority1Demo: Boolean(p1Response.demo),
       priority1Error: p1Response.error,
     });
+  });
+
+  // ==========================================================================
+  // BOOKING REQUESTS — client clicks "Request booking" on a comparison row.
+  // Doesn't book anything; it queues a request for the operator to confirm
+  // capacity, PARS/PAPS, DG, etc. Auto-scoped to the caller's orgId.
+  // ==========================================================================
+  router.post("/booking-requests", async (req: Request, res: Response) => {
+    const { carrierName, serviceLevel, mode, originZip, destinationZip, pickupDateIso, totalUsd, transitDays, metadata } = req.body ?? {};
+    const authOrgId = req.authUser?.orgId;
+    if (!authOrgId) return res.status(400).json({ error: "This account has no org on file — contact your Pascal Logistics operator." });
+    if (!carrierName || !originZip || !destinationZip || !pickupDateIso || totalUsd === undefined) {
+      return res.status(400).json({ error: "carrierName, originZip, destinationZip, pickupDateIso, totalUsd are required." });
+    }
+    const normalizedMode = mode === "FTL" ? "FTL" : "LTL";
+    const result = await pool.query(
+      `INSERT INTO booking_requests
+        (org_id, requested_by_email, carrier_name, service_level, mode, origin_zip, destination_zip, pickup_date_iso, total_usd, transit_days, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING *`,
+      [
+        authOrgId,
+        req.authUser?.email ?? null,
+        String(carrierName),
+        serviceLevel ?? null,
+        normalizedMode,
+        String(originZip),
+        String(destinationZip),
+        pickupDateIso,
+        Number(totalUsd),
+        transitDays ?? null,
+        metadata ? JSON.stringify(metadata) : null,
+      ],
+    );
+    await logActivity(
+      "shipment_ingested",
+      `Booking request from ${req.authUser?.email ?? "client"}: ${carrierName} · ${originZip} → ${destinationZip} · $${Number(totalUsd).toFixed(0)} — awaiting operator confirmation`,
+      undefined,
+      { orgId: authOrgId, bookingRequestId: result.rows[0].id },
+    );
+    return res.status(201).json({ bookingRequest: result.rows[0] });
   });
 
   return router;

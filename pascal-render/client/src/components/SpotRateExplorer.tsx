@@ -9,10 +9,12 @@
 // dispatch.
 // ============================================================================
 
-import { useState } from "react";
-import { Search, Loader2, TrendingDown, TrendingUp, Info, AlertCircle, ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Search, Loader2, TrendingDown, TrendingUp, Info, AlertCircle, ArrowRight, CheckCircle2 } from "lucide-react";
 import { api, ApiError } from "../config/api";
 import { WeightInput } from "./WeightInput";
+
+type DisplayCurrency = "USD" | "CAD" | "MXN";
 
 interface IncumbentRate {
   id: string;
@@ -20,6 +22,7 @@ interface IncumbentRate {
   serviceLevel?: string;
   transitDays?: number;
   totalRateUsd: number;
+  totalRateDisplay?: number;
   effectiveDateIso?: string;
   rateSource: string;
 }
@@ -29,8 +32,10 @@ interface ComparedQuote {
   serviceLevel?: string;
   transitDays?: number;
   totalUsd: number;
+  totalDisplay?: number;
   expirationDateIso?: string;
   savingsVsIncumbentUsd?: number;
+  savingsVsIncumbentDisplay?: number;
   savingsVsIncumbentPct?: number;
 }
 
@@ -38,10 +43,14 @@ interface CompareResponse {
   incumbent?: IncumbentRate;
   quotes: ComparedQuote[];
   mode?: "LTL" | "FTL";
+  displayCurrency?: DisplayCurrency;
+  fxRate?: number;
   priority1Simulated: boolean;
   priority1Demo?: boolean;
   priority1Error?: string;
 }
+
+const CURRENCY_SYMBOL: Record<DisplayCurrency, string> = { USD: "$", CAD: "CA$", MXN: "MX$" };
 
 const NMFC_CLASSES = ["50", "55", "60", "65", "70", "77.5", "85", "92.5", "100", "110", "125", "150", "175", "200", "250", "300", "400", "500"] as const;
 const TRAILER_TYPES = ["Dry Van", "Reefer", "Flatbed", "Step Deck", "Conestoga", "Straight Truck"] as const;
@@ -58,12 +67,21 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
   const [freightClass, setFreightClass] = useState("150");
   const [mode, setMode] = useState<"LTL" | "FTL">("LTL");
   const [trailerType, setTrailerType] = useState<string>("Dry Van");
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>("USD");
   const units = "1";
 
   const [result, setResult] = useState<CompareResponse | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [expanded, setExpanded] = useState(false);
+  const [bookingStatus, setBookingStatus] = useState<{ carrierName: string; error?: string } | undefined>();
+
+  // Clear the previous result when the user changes mode so an LTL result
+  // doesn't linger on screen while they're picking FTL carriers.
+  useEffect(() => {
+    setResult(undefined);
+    setBookingStatus(undefined);
+  }, [mode]);
 
   async function run(e: React.FormEvent) {
     e.preventDefault();
@@ -72,24 +90,25 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
     setError(undefined);
     setResult(undefined);
     try {
+      const baseItem: Record<string, unknown> = {
+        packagingType: mode === "FTL" ? "Full Trailer" : "Pallet",
+        units: Number(units),
+        pieces: Number(units),
+        totalWeightLbs: Number(weightLbs),
+        lengthIn: 48,
+        widthIn: 40,
+        heightIn: 40,
+      };
+      if (mode === "LTL") baseItem.freightClass = freightClass;
+
       const response = await api.clientQuoteCompare<CompareResponse>({
         originZip: originZip.trim(),
         destinationZip: destinationZip.trim(),
         pickupDateIso: `${pickupDate}T00:00:00Z`,
         mode,
         trailerType: mode === "FTL" ? trailerType : undefined,
-        items: [
-          {
-            freightClass: mode === "LTL" ? freightClass : "100",
-            packagingType: mode === "FTL" ? "Full Trailer" : "Pallet",
-            units: Number(units),
-            pieces: Number(units),
-            totalWeightLbs: Number(weightLbs),
-            lengthIn: 48,
-            widthIn: 40,
-            heightIn: 40,
-          },
-        ],
+        displayCurrency,
+        items: [baseItem],
       });
       setResult(response);
       setExpanded(true);
@@ -100,36 +119,65 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
     }
   }
 
-  function handleBook(q: ComparedQuote) {
-    if (onBookRequest) {
-      onBookRequest({
+  async function handleBook(q: ComparedQuote) {
+    setBookingStatus(undefined);
+    try {
+      await api.clientRequestBooking({
         carrierName: q.carrierName,
-        originZip,
-        destinationZip,
+        serviceLevel: q.serviceLevel,
+        mode,
+        originZip: originZip.trim(),
+        destinationZip: destinationZip.trim(),
         pickupDateIso: `${pickupDate}T00:00:00Z`,
         totalUsd: q.totalUsd,
+        transitDays: q.transitDays,
+        metadata: { weightLbs: Number(weightLbs), freightClass: mode === "LTL" ? freightClass : undefined, trailerType: mode === "FTL" ? trailerType : undefined },
       });
-    } else {
-      alert(`We'll pass along your interest in booking ${q.carrierName} at $${q.totalUsd.toFixed(2)} to your Pascal Logistics operator. They'll confirm carrier availability and PARS/PAPS readiness before dispatch.`);
+      setBookingStatus({ carrierName: q.carrierName });
+      if (onBookRequest) {
+        onBookRequest({
+          carrierName: q.carrierName,
+          originZip,
+          destinationZip,
+          pickupDateIso: `${pickupDate}T00:00:00Z`,
+          totalUsd: q.totalUsd,
+        });
+      }
+    } catch (err) {
+      setBookingStatus({ carrierName: q.carrierName, error: err instanceof ApiError ? err.message : "Could not send booking request." });
     }
   }
 
   const best = result?.quotes?.[0];
   const bestSavings = best?.savingsVsIncumbentUsd;
+  const currencySymbol = CURRENCY_SYMBOL[displayCurrency];
+  const fmt = (usdValue: number, displayValue?: number) => `${currencySymbol}${(displayValue ?? usdValue).toFixed(2)}`;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Search size={16} className="text-slate-700" />
           <p className="text-sm font-bold">Spot Rate Explorer</p>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">Planning only · Operator confirms every booking</span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500 hidden sm:inline">Planning only · Operator confirms every booking</span>
         </div>
-        {result && (
-          <button onClick={() => setExpanded((v) => !v)} className="text-xs font-medium text-slate-500 hover:text-slate-700">
-            {expanded ? "Collapse" : "Expand"}
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <select
+            value={displayCurrency}
+            onChange={(e) => setDisplayCurrency(e.target.value as DisplayCurrency)}
+            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 focus:border-cyan-500 focus:outline-none"
+            title="Display currency"
+          >
+            <option value="USD">USD</option>
+            <option value="CAD">CAD</option>
+            <option value="MXN">MXN</option>
+          </select>
+          {result && (
+            <button onClick={() => setExpanded((v) => !v)} className="text-xs font-medium text-slate-500 hover:text-slate-700">
+              {expanded ? "Collapse" : "Expand"}
+            </button>
+          )}
+        </div>
       </div>
 
       <form onSubmit={run} className="grid grid-cols-2 gap-3 p-5 md:grid-cols-6">
@@ -207,7 +255,7 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
                   <div className="text-sm font-semibold text-slate-900">{result.incumbent.carrierName}</div>
                   <div className="text-xs text-slate-500">{result.incumbent.serviceLevel ?? "—"} · {result.incumbent.transitDays ? `${result.incumbent.transitDays}d` : "—"} · from {result.incumbent.rateSource}</div>
                 </div>
-                <div className="text-xl font-mono font-semibold text-slate-900">${result.incumbent.totalRateUsd.toFixed(2)}</div>
+                <div className="text-xl font-mono font-semibold text-slate-900">{fmt(result.incumbent.totalRateUsd, result.incumbent.totalRateDisplay)}</div>
               </div>
             </div>
           )}
@@ -215,7 +263,20 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
           {best && bestSavings !== undefined && bestSavings > 0 && (
             <div className="mx-5 mb-4 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-900">
               <TrendingDown size={14} />
-              <span>Best option: <strong>{best.carrierName}</strong> at ${best.totalUsd.toFixed(2)} — <strong>saves ${bestSavings.toFixed(2)} ({best.savingsVsIncumbentPct?.toFixed(1)}%)</strong> vs your incumbent.</span>
+              <span>Best option: <strong>{best.carrierName}</strong> at {fmt(best.totalUsd, best.totalDisplay)} — <strong>saves {fmt(bestSavings, best.savingsVsIncumbentDisplay)} ({best.savingsVsIncumbentPct?.toFixed(1)}%)</strong> vs your incumbent.</span>
+            </div>
+          )}
+
+          {bookingStatus && !bookingStatus.error && (
+            <div className="mx-5 mb-4 flex items-center gap-2 rounded-md border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-xs text-cyan-900">
+              <CheckCircle2 size={14} />
+              <span>Booking request for <strong>{bookingStatus.carrierName}</strong> sent to your Pascal Logistics operator. You&rsquo;ll hear back with carrier availability &amp; PARS/PAPS confirmation within one business day.</span>
+            </div>
+          )}
+          {bookingStatus?.error && (
+            <div className="mx-5 mb-4 flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs text-rose-900">
+              <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+              <span>Booking request for <strong>{bookingStatus.carrierName}</strong> couldn&rsquo;t be sent: {bookingStatus.error}</span>
             </div>
           )}
 
@@ -240,12 +301,12 @@ export function SpotRateExplorer({ onBookRequest }: Props) {
                       <td className="py-2 pr-3 font-medium text-slate-900">{q.carrierName}</td>
                       <td className="py-2 pr-3 text-slate-600">{q.serviceLevel ?? "—"}</td>
                       <td className="py-2 pr-3 text-right text-slate-600">{q.transitDays ? `${q.transitDays}d` : "—"}</td>
-                      <td className="py-2 pr-3 text-right font-mono font-medium text-slate-900">${q.totalUsd.toFixed(2)}</td>
+                      <td className="py-2 pr-3 text-right font-mono font-medium text-slate-900">{fmt(q.totalUsd, q.totalDisplay)}</td>
                       <td className={`py-2 pr-3 text-right font-mono ${cls}`}>
                         {savings === undefined ? "—" : (
                           <span className="inline-flex items-center gap-1 justify-end">
                             {savings > 0 ? <TrendingDown size={11} /> : savings < 0 ? <TrendingUp size={11} /> : null}
-                            ${Math.abs(savings).toFixed(2)}
+                            {fmt(Math.abs(savings), q.savingsVsIncumbentDisplay !== undefined ? Math.abs(q.savingsVsIncumbentDisplay) : undefined)}
                             {q.savingsVsIncumbentPct !== undefined && <span className="text-[10px] text-slate-500">({q.savingsVsIncumbentPct.toFixed(1)}%)</span>}
                           </span>
                         )}

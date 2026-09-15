@@ -30,6 +30,7 @@ import { optimizeRate } from "../agents/agent3RateOptimization.js";
 import type { CargoDetails, CustomsDetails } from "../types/shipment.js";
 import type { BorderTelemetryService } from "../services/borderTelemetryService.js";
 import { getPriority1LtlRates, type Priority1LineItem } from "../services/priority1.js";
+import { getFxRates } from "../services/fxRates.js";
 import { SAMPLE_SHIPMENTS } from "./client.js";
 
 const CARRIER_FORMAT_RULES: Record<string, RegExp> = {
@@ -270,11 +271,12 @@ export function createCarriersRouter(telemetryService: BorderTelemetryService): 
   // returns Priority1 rates alone with no savings math, not an error.
   // ==========================================================================
   router.post("/quote-compare", async (req: Request, res: Response) => {
-    const { orgId, originZip, destinationZip, pickupDateIso, items, mode, trailerType } = req.body ?? {};
+    const { orgId, originZip, destinationZip, pickupDateIso, items, mode, trailerType, displayCurrency } = req.body ?? {};
     if (!orgId || !originZip || !destinationZip || !pickupDateIso || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "orgId, originZip, destinationZip, pickupDateIso, and items[] are required." });
     }
     const normalizedMode: "LTL" | "FTL" = mode === "FTL" ? "FTL" : "LTL";
+    const normalizedCurrency: "USD" | "CAD" | "MXN" = displayCurrency === "CAD" || displayCurrency === "MXN" ? displayCurrency : "USD";
 
     const normalizedItems: Priority1LineItem[] = items.map((it: Record<string, unknown>) => ({
       freightClass: String(it.freightClass ?? "150"),
@@ -312,14 +314,57 @@ export function createCarriersRouter(telemetryService: BorderTelemetryService): 
     // Sort cheapest first — most-savings first when incumbent is known.
     compared.sort((a, b) => a.totalUsd - b.totalUsd);
 
+    let fxRate = 1;
+    if (normalizedCurrency !== "USD") {
+      const fx = await getFxRates();
+      fxRate = fx.rates[normalizedCurrency];
+    }
+    const displayQuotes = compared.map((q) => ({
+      ...q,
+      totalDisplay: Math.round(q.totalUsd * fxRate * 100) / 100,
+      savingsVsIncumbentDisplay: q.savingsVsIncumbentUsd !== undefined ? Math.round(q.savingsVsIncumbentUsd * fxRate * 100) / 100 : undefined,
+    }));
+    const displayIncumbent = incumbent ? { ...incumbent, totalRateDisplay: Math.round(incumbent.totalRateUsd * fxRate * 100) / 100 } : undefined;
+
     return res.status(200).json({
-      incumbent,
-      quotes: compared,
+      incumbent: displayIncumbent,
+      quotes: displayQuotes,
       mode: normalizedMode,
+      displayCurrency: normalizedCurrency,
+      fxRate,
       priority1Simulated: p1Response.simulated,
       priority1Demo: Boolean(p1Response.demo),
       priority1Error: p1Response.error,
     });
+  });
+
+  // ==========================================================================
+  // BOOKING REQUESTS — operator side. GET the pending queue, PATCH to
+  // accept/decline. Insertion happens on the client route (/api/client/
+  // booking-requests) after a client clicks "Request booking" in the
+  // Spot Rate Explorer.
+  // ==========================================================================
+  router.get("/booking-requests", async (req: Request, res: Response) => {
+    const status = typeof req.query.status === "string" ? req.query.status : "pending";
+    const result = await pool.query(
+      `SELECT * FROM booking_requests WHERE status = $1 ORDER BY created_at DESC LIMIT 200`,
+      [status],
+    );
+    return res.status(200).json({ bookingRequests: result.rows });
+  });
+
+  router.patch("/booking-requests/:id", async (req: Request, res: Response) => {
+    const { status, operatorNotes } = req.body ?? {};
+    if (status !== "accepted" && status !== "declined" && status !== "expired") {
+      return res.status(400).json({ error: "status must be 'accepted', 'declined', or 'expired'." });
+    }
+    const result = await pool.query(
+      `UPDATE booking_requests SET status = $1, operator_notes = COALESCE($2, operator_notes), responded_at = now()
+        WHERE id = $3 RETURNING *`,
+      [status, operatorNotes ?? null, req.params.id],
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: "Booking request not found." });
+    return res.status(200).json({ bookingRequest: result.rows[0] });
   });
 
   return router;

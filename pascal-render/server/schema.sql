@@ -971,3 +971,33 @@ CREATE INDEX IF NOT EXISTS idx_client_carrier_rates_lane ON client_carrier_rates
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS client_capabilities JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_accounts_capabilities_gin ON accounts USING GIN (client_capabilities);
+
+-- ============================================================================
+-- BOOKING REQUESTS — client-initiated intent to book a specific carrier
+-- from a Spot Rate Explorer comparison. Not an actual booking; the
+-- operator confirms carrier capacity, PARS/PAPS readiness, DG, and
+-- everything else before the load dispatches. status: 'pending' (client
+-- clicked Request), 'accepted' (operator confirmed and booked), 'declined'
+-- (operator can't fulfill), 'expired' (stale).
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS booking_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL,
+  requested_by_email TEXT,
+  carrier_name TEXT NOT NULL,
+  service_level TEXT,
+  mode TEXT NOT NULL DEFAULT 'LTL' CHECK (mode IN ('LTL', 'FTL')),
+  origin_zip VARCHAR(10) NOT NULL,
+  destination_zip VARCHAR(10) NOT NULL,
+  pickup_date_iso TIMESTAMPTZ NOT NULL,
+  total_usd NUMERIC(10,2) NOT NULL,
+  transit_days INT,
+  metadata JSONB,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'expired')),
+  operator_notes TEXT,
+  responded_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_booking_requests_org_status ON booking_requests (org_id, status);
+CREATE INDEX IF NOT EXISTS idx_booking_requests_status_created ON booking_requests (status, created_at DESC);

@@ -242,7 +242,19 @@ export function createAccountsRouter(): Router {
         body.preferredCarrierScacs ?? [],
       ],
     );
-    res.status(201).json(rowToAccount(result.rows[0]));
+    // If the operator supplied a shipping profile during onboarding
+    // (Add Account modal now includes those fields), persist it as a
+    // follow-up UPDATE rather than expanding the giant INSERT above.
+    let finalRow = result.rows[0];
+    const bodyWithCaps = req.body as { clientCapabilities?: Record<string, unknown> };
+    if (bodyWithCaps.clientCapabilities && typeof bodyWithCaps.clientCapabilities === "object") {
+      const updated = await pool.query(
+        "UPDATE accounts SET client_capabilities = $1::jsonb WHERE id = $2 RETURNING *",
+        [JSON.stringify(bodyWithCaps.clientCapabilities), finalRow.id],
+      );
+      if (updated.rowCount !== 0) finalRow = updated.rows[0];
+    }
+    res.status(201).json(rowToAccount(finalRow));
     return;
   });
 

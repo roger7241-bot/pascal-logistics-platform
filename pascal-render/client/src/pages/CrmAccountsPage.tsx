@@ -167,6 +167,13 @@ export function CrmAccountsPage() {
   const [secondaryContactName, setSecondaryContactName] = useState("");
   const [secondaryContactEmail, setSecondaryContactEmail] = useState("");
   const [secondaryContactPhone, setSecondaryContactPhone] = useState("");
+  const [capShipsUSToCanada, setCapShipsUSToCanada] = useState(false);
+  const [capShipsCanadaToUS, setCapShipsCanadaToUS] = useState(false);
+  const [capShipsDomesticOnly, setCapShipsDomesticOnly] = useState(false);
+  const [capShipsInternational, setCapShipsInternational] = useState(false);
+  const [capBrokerOfRecord, setCapBrokerOfRecord] = useState("");
+  const [capTrackedHsCodesInput, setCapTrackedHsCodesInput] = useState("");
+  const [capMonthlyLoadsEstimate, setCapMonthlyLoadsEstimate] = useState("");
   const [primaryCommoditiesInput, setPrimaryCommoditiesInput] = useState("");
   const [requiresReefer, setRequiresReefer] = useState(false);
   const [requiresHazmat, setRequiresHazmat] = useState(false);
@@ -247,6 +254,15 @@ export function CrmAccountsPage() {
         requiresReefer,
         requiresHazmat,
         preferredCarrierScacs: preferredCarrierScacsInput.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
+        clientCapabilities: {
+          shipsUSToCanada: capShipsUSToCanada || undefined,
+          shipsCanadaToUS: capShipsCanadaToUS || undefined,
+          shipsDomesticOnly: capShipsDomesticOnly || undefined,
+          shipsInternational: capShipsInternational || undefined,
+          brokerOfRecord: capBrokerOfRecord.trim() || undefined,
+          trackedHsCodes: capTrackedHsCodesInput.split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
+          monthlyLoadsEstimate: capMonthlyLoadsEstimate || undefined,
+        },
         ...taxField,
       });
       setOrgId("");
@@ -794,6 +810,39 @@ export function CrmAccountsPage() {
                     <input type="checkbox" checked={requiresHazmat} onChange={(e) => setRequiresHazmat(e.target.checked)} className="rounded border-slate-300" />
                     Requires hazmat
                   </label>
+                </div>
+              </div>
+
+              {/* Shipping profile — drives which portal features this client sees. */}
+              <div>
+                <p className="mb-2 text-xs font-mono uppercase tracking-wide text-slate-500">Shipping Profile</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                    <input type="checkbox" checked={capShipsUSToCanada} onChange={(e) => setCapShipsUSToCanada(e.target.checked)} className="rounded border-slate-300" />
+                    Ships US → Canada
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                    <input type="checkbox" checked={capShipsCanadaToUS} onChange={(e) => setCapShipsCanadaToUS(e.target.checked)} className="rounded border-slate-300" />
+                    Ships Canada → US
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                    <input type="checkbox" checked={capShipsDomesticOnly} onChange={(e) => setCapShipsDomesticOnly(e.target.checked)} className="rounded border-slate-300" />
+                    Domestic only (no border crossings)
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                    <input type="checkbox" checked={capShipsInternational} onChange={(e) => setCapShipsInternational(e.target.checked)} className="rounded border-slate-300" />
+                    International (ocean/air non-USMCA)
+                  </label>
+                  <input value={capBrokerOfRecord} onChange={(e) => setCapBrokerOfRecord(e.target.value)} placeholder="Broker of record (e.g. A&A Customs)" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={capTrackedHsCodesInput} onChange={(e) => setCapTrackedHsCodesInput(e.target.value)} placeholder="Tracked HS codes (e.g. 8703.23, 7208.10)" className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <select value={capMonthlyLoadsEstimate} onChange={(e) => setCapMonthlyLoadsEstimate(e.target.value)} className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">Estimated loads / month —</option>
+                    <option value="fewer_than_4">Fewer than 4</option>
+                    <option value="4-10">4 – 10</option>
+                    <option value="10-20">10 – 20</option>
+                    <option value="20-50">20 – 50</option>
+                    <option value="50+">50+</option>
+                  </select>
                 </div>
               </div>
 
