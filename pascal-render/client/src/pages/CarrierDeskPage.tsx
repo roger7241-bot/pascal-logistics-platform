@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { QuoteComparisonPanel } from "../components/QuoteComparisonPanel";
+import { BookingRequestsQueue } from "../components/BookingRequestsQueue";
 import { api } from "../config/api";
 
 interface Carrier {
@@ -269,6 +270,13 @@ export function CarrierDeskPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Client booking requests generated from the client-portal Spot
+            Rate Explorer — self-hides when the queue is empty so it
+            doesn't add noise on days without inbound requests. */}
+        <div className="mt-4">
+          <BookingRequestsQueue />
         </div>
 
         {/* Priority1 quote-comparison: live LTL rates vs client's incumbent
