@@ -1178,3 +1178,34 @@ UPDATE agent_registry
    AND status <> 'active';
 UPDATE agent_registry SET agent_number = 14, updated_at = now() WHERE agent_key = 'agent10_legal_watcher'   AND agent_number <> 14;
 UPDATE agent_registry SET agent_number = 15, updated_at = now() WHERE agent_key = 'agent11_hr'              AND agent_number <> 15;
+
+
+-- ============================================================================
+-- AGENT ORCHESTRATION — cross-agent task handoffs
+-- Every multi-step workflow (Customs finds missing USMCA → Customer Service
+-- drafts client outreach → Finance flags entry-cost impact) lives in
+-- agent_tasks with a trail JSONB documenting each handoff. Roger reviews at
+-- named human-gate points; agents relay to each other autonomously between
+-- gates. Nothing outbound crosses a gate without operator sign-off.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS agent_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'in_progress'
+    CHECK (status IN ('in_progress', 'awaiting_review', 'handed_off', 'completed', 'rejected', 'blocked')),
+  origin_agent_key TEXT NOT NULL REFERENCES agent_registry (agent_key) ON DELETE CASCADE,
+  current_agent_key TEXT NOT NULL REFERENCES agent_registry (agent_key) ON DELETE CASCADE,
+  client_org_id TEXT,
+  subject TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  trail JSONB NOT NULL DEFAULT '[]'::jsonb,
+  human_gate_reason TEXT,
+  linked_draft_id UUID REFERENCES agent_drafts (id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks (status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_tasks_current ON agent_tasks (current_agent_key, status);
+CREATE INDEX IF NOT EXISTS idx_agent_tasks_client ON agent_tasks (client_org_id, updated_at DESC);

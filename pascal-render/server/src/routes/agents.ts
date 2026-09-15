@@ -21,6 +21,7 @@ import { categorizeAndDraft as claimsCategorize, persistDraft as claimsPersist, 
 import { categorizeAndDraft as financeCategorize, persistDraft as financePersist, type FinanceEvent } from "../services/agent8Finance.js";
 import { categorizeAndDraft as marketingCategorize, persistDraft as marketingPersist, type MarketingBrief, type MarketingFormat } from "../services/agent9Marketing.js";
 import { categorizeAndDraft as eaCategorize, persistDraft as eaPersist, type EaRequest } from "../services/agent7ExecutiveAssistant.js";
+import { listRecentTasks } from "../services/orchestrator.js";
 
 export function createAgentsRouter(): Router {
   const router = Router();
@@ -269,6 +270,15 @@ export function createAgentsRouter(): Router {
     const output = await marketingCategorize(brief);
     const draft = await marketingPersist(brief, output, `simulated:${Date.now()}`);
     return res.status(201).json({ draft, output });
+  });
+
+  // Cross-agent task trail — every multi-agent handoff shows up here so
+  // Roger can see who touched what, and what's waiting on his review.
+  router.get("/agent-tasks", async (req: Request, res: Response) => {
+    const days = typeof req.query.days === "string" ? Math.max(1, Math.min(30, Number(req.query.days))) : 3;
+    const statusFilter = typeof req.query.status === "string" ? req.query.status : undefined;
+    const tasks = await listRecentTasks(days, statusFilter);
+    return res.status(200).json({ tasks });
   });
 
   // Simulate an EA request — scheduling, meeting prep, onboarding, follow-up.

@@ -14,6 +14,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
 import { PASCAL_SYSTEM_PREFIX } from "./pascalContext.js";
+import { createTask } from "./orchestrator.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -165,6 +166,29 @@ export async function persistDraft(event: CustomsEvent, output: CustomsOutput, s
     `UPDATE agent_registry SET last_run_at = now(), last_run_status = 'draft_created', updated_at = now()
      WHERE agent_key = 'agent13_customs_liaison'`,
   );
+
+  // Cross-agent handoff: if the packet audit surfaced a missing USMCA cert,
+  // hand off to Customer Service (Agent 8, key agent5_client_chat) so they
+  // draft the client outreach. Roger sees the trail in the Task board.
+  const missingUsmca = output.docPacketIssues.find((s) => /usmca/i.test(s));
+  if (missingUsmca && event.direction !== "domestic") {
+    await createTask({
+      taskType: "usmca_missing_alert",
+      originAgentKey: "agent13_customs_liaison",
+      nextAgentKey: "agent5_client_chat", // Customer Service (display slot 8)
+      subject: `USMCA cert missing — ${event.shipmentRef}`,
+      payload: {
+        shipmentRef: event.shipmentRef,
+        direction: event.direction,
+        brokerName: event.brokerName,
+        estimatedImpact: "Will file at MFN duty rate unless resolved before entry — usually 3-10% duty depending on HS classification.",
+      },
+      originContribution: `Pre-entry packet audit flagged missing USMCA cert of origin on ${event.shipmentRef}. ${missingUsmca}`,
+      linkedDraftId: result.rows[0].id as string,
+      humanGateReason: "Confirm client is USMCA-qualifying before we draft outreach",
+    });
+  }
+
   return result.rows[0];
 }
 

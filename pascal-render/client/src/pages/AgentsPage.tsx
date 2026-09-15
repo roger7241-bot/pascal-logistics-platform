@@ -9,7 +9,7 @@
 // ============================================================================
 
 import { useEffect, useState } from "react";
-import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone, CalendarClock } from "lucide-react";
+import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone, CalendarClock, GitBranch, ArrowRight } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api, ApiError } from "../config/api";
 
@@ -66,6 +66,26 @@ interface MarketingPayload {
 interface EaPayload {
   request: { eventType: string; contactName?: string; contactCompany?: string; requestDetail: string; meetingWhenIso?: string };
   output: DraftOutputBase & { recipientRole: "prospect" | "client" | "internal" };
+}
+
+interface TrailEntry {
+  agentKey: string;
+  action: "created" | "advanced" | "gated_for_review" | "completed" | "rejected" | "blocked";
+  contribution: string;
+  atIso: string;
+}
+interface AgentTaskRow {
+  id: string;
+  task_type: string;
+  status: "in_progress" | "awaiting_review" | "handed_off" | "completed" | "rejected" | "blocked";
+  origin_agent_key: string;
+  current_agent_key: string;
+  client_org_id: string | null;
+  subject: string;
+  trail: TrailEntry[];
+  human_gate_reason: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface DraftRow {
@@ -150,6 +170,7 @@ const DECISION_CLASS = {
 export function AgentsPage() {
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
+  const [tasks, setTasks] = useState<AgentTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const [actioning, setActioning] = useState<string | undefined>();
@@ -248,12 +269,14 @@ export function AgentsPage() {
     setLoading(true);
     setError(undefined);
     try {
-      const [a, d] = await Promise.all([
+      const [a, d, t] = await Promise.all([
         api.agents<{ agents: AgentRow[] }>(),
         api.agentDrafts<{ drafts: DraftRow[] }>("pending"),
+        api.agentTasks<{ tasks: AgentTaskRow[] }>(3).catch(() => ({ tasks: [] })),
       ]);
       setAgents(a.agents);
       setDrafts(d.drafts);
+      setTasks(t.tasks);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load agents.");
     } finally {
@@ -431,6 +454,62 @@ export function AgentsPage() {
             </div>
           ))}
         </section>
+
+        {/* Cross-agent task trail — visible whenever there are any tasks */}
+        {tasks.length > 0 && (
+          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <GitBranch size={14} className="text-slate-700" />
+                <p className="text-sm font-bold text-slate-900">Cross-agent task trail</p>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">last 3 days</span>
+                {tasks.filter((t) => t.status === "awaiting_review").length > 0 && (
+                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wide text-rose-800">
+                    {tasks.filter((t) => t.status === "awaiting_review").length} gated for review
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {tasks.slice(0, 10).map((t) => {
+                const originAgent = agents.find((a) => a.agentKey === t.origin_agent_key);
+                const currentAgent = agents.find((a) => a.agentKey === t.current_agent_key);
+                return (
+                  <div key={t.id} className="px-5 py-3">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wide ${t.status === "awaiting_review" ? "border-rose-200 bg-rose-50 text-rose-800" : t.status === "completed" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}>{t.status.replace(/_/g, " ")}</span>
+                      <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">{t.task_type.replace(/_/g, " ")}</span>
+                      <p className="text-xs font-semibold text-slate-900">{t.subject}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-1">
+                      <span className="font-medium text-slate-700">{originAgent?.name ?? t.origin_agent_key}</span>
+                      <ArrowRight size={11} />
+                      <span className="font-medium text-slate-700">{currentAgent?.name ?? t.current_agent_key}</span>
+                      <span className="text-slate-400">·</span>
+                      <span>{t.trail.length} step{t.trail.length === 1 ? "" : "s"}</span>
+                      {t.human_gate_reason && (
+                        <>
+                          <span className="text-slate-400">·</span>
+                          <span className="text-rose-700">Gate: {t.human_gate_reason}</span>
+                        </>
+                      )}
+                    </div>
+                    {t.trail.length > 0 && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[10px] font-mono uppercase tracking-wide text-slate-500 hover:text-slate-700">Full trail</summary>
+                        <ol className="mt-2 list-decimal list-inside space-y-1 text-[11px] text-slate-600">
+                          {t.trail.map((e, i) => (
+                            <li key={i}><span className="font-medium text-slate-800">{agents.find((a) => a.agentKey === e.agentKey)?.name ?? e.agentKey}</span> <span className="text-slate-400">{e.action.replace(/_/g, " ")}</span>: {e.contribution}</li>
+                          ))}
+                        </ol>
+                      </details>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Tabbed simulate section */}
         <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
