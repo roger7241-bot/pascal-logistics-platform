@@ -300,6 +300,13 @@ export const api = {
   calendarStatus: <TResult = unknown>() => request<TResult>("/api/operator/calendar/integration-status"),
   createCalendarEvent: <TResult = unknown>(payload: { title: string; description?: string; startIso: string; endIso: string; attendees?: string[] }) =>
     request<TResult>("/api/operator/calendar/create-event", { method: "POST", body: payload }),
+  // Landed cost — three flavors: public (no auth), client, operator
+  publicLandedCostEstimate: <TResult = unknown>(input: Record<string, unknown>) =>
+    request<TResult>("/api/public/landed-cost/estimate", { method: "POST", body: input }),
+  publicLandedCostSaveLead: <TResult = unknown>(payload: { email: string; contactName?: string; companyName?: string; input: Record<string, unknown> }) =>
+    request<TResult>("/api/public/landed-cost/save-lead", { method: "POST", body: payload }),
+  landedCostEstimate: <TResult = unknown>(scope: "operator" | "client", input: Record<string, unknown>) =>
+    request<TResult>(`/api/${scope}/landed-cost/estimate`, { method: "POST", body: input }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>

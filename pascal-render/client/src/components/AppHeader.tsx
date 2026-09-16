@@ -22,6 +22,7 @@ const CLIENT_NAV_ITEMS = [
   { to: "/client-portal", label: "Client Portal" },
   { to: "/client-portal/dashboard", label: "Executive Dashboard" },
   { to: "/client-portal/activity", label: "What we did" },
+  { to: "/client-portal/quote", label: "Landed Cost" },
   { to: "/client-portal/tracking", label: "Ocean & Air Tracking" },
   { to: "/client-portal/documents", label: "Documents" },
   { to: "/client-portal/onboarding", label: "Onboarding" },

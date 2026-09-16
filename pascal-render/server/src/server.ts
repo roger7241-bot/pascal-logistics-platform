@@ -27,6 +27,7 @@ import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createSprint2Router } from "./routes/sprint2.js";
 import { createOperatorInboxRouter, createClientActivityRouter } from "./routes/sprint3.js";
 import { createMultiUserRouter, createProspectsRouter, createCalendarRouter } from "./routes/sprint4.js";
+import { createPublicLandedCostRouter, createAuthedLandedCostRouter } from "./routes/landedCost.js";
 import { createBillingRouter } from "./routes/billing.js";
 import { createLeadsRouter } from "./routes/leads.js";
 import { createVaultRouter } from "./routes/vault.js";
@@ -104,6 +105,11 @@ app.use("/api/v1/track", createPublicTrackingRouter());
 // a session. Each handler validates its own payload shape.
 app.use("/api/webhooks", createWebhooksRouter());
 
+// Public landed-cost calculator — no auth so the marketing site widget
+// and unauthenticated visitors can get an estimate. Every submission with
+// an email becomes a prospect row + fires Chief of Staff draft.
+app.use("/api/public", createPublicLandedCostRouter());
+
 // Everything else below requires a real, verified session — this is the
 // actual fix for the "no auth layer, org_id trusted from request params"
 // gap. requireOperator (Pascal staff only) gates the routes with no
@@ -147,6 +153,8 @@ app.use("/api/operator", createMultiUserRouter("operator"));
 app.use("/api/client", createMultiUserRouter("client"));
 app.use("/api/operator", createProspectsRouter());
 app.use("/api/operator", createCalendarRouter());
+app.use("/api/operator", createAuthedLandedCostRouter());
+app.use("/api/client", createAuthedLandedCostRouter());
 app.use("/api/operator", createBillingRouter());
 app.use("/api/operator", createLeadsRouter());
 app.use("/api/operator", createVaultRouter());
