@@ -19,6 +19,8 @@ import { ClientTrackingPage } from "./pages/ClientTrackingPage";
 import { ClientOnboardingPage } from "./pages/ClientOnboardingPage";
 import { ClientDocumentsPage } from "./pages/ClientDocumentsPage";
 import { ClientSettingsPage } from "./pages/ClientSettingsPage";
+import { ClientActivityPage } from "./pages/ClientActivityPage";
+import { OperatorInboxPage } from "./pages/OperatorInboxPage";
 import { CallActivityPage } from "./pages/CallActivityPage";
 import { RapidDispatchDesk } from "./pages/RapidDispatchDesk";
 import { MagicUploadPage } from "./pages/MagicUploadPage";
@@ -65,6 +67,8 @@ export default function App() {
           <Route path="/client-portal/onboarding" element={<RequireAuth><ClientOnboardingPage /></RequireAuth>} />
           <Route path="/client-portal/documents" element={<RequireAuth><ClientDocumentsPage /></RequireAuth>} />
           <Route path="/client-portal/settings" element={<RequireAuth><ClientSettingsPage /></RequireAuth>} />
+          <Route path="/client-portal/activity" element={<RequireAuth><ClientActivityPage /></RequireAuth>} />
+          <Route path="/operator/inbox" element={<RequireAuth role="operator"><OperatorInboxPage /></RequireAuth>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

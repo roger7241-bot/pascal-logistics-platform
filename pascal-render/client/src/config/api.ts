@@ -272,6 +272,16 @@ export const api = {
     request<TResult>(`/api/${scope}/notification-preferences`, { method: "PUT", body: { preferences } }),
   updateBranding: <TResult = unknown>(orgId: string, payload: { brandColor?: string; logoUrl?: string }) =>
     request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/branding`, { method: "PUT", body: payload }),
+  // Sprint 3
+  operatorInbox: <TResult = unknown>() => request<TResult>("/api/operator/inbox"),
+  batchDraftAction: <TResult = unknown>(payload: { ids: string[]; action: "approved" | "rejected" | "sent" | "archived"; operatorNotes?: string }) =>
+    request<TResult>("/api/operator/agents/drafts/batch", { method: "POST", body: payload }),
+  clientActivity: <TResult = unknown>(days?: number, previewOrgId?: string) => {
+    const params: string[] = [];
+    if (days) params.push(`days=${days}`);
+    if (previewOrgId) params.push(`orgId=${encodeURIComponent(previewOrgId)}`);
+    return request<TResult>(`/api/client/activity${params.length ? `?${params.join("&")}` : ""}`);
+  },
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>

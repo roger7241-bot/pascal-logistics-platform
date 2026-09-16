@@ -186,6 +186,8 @@ export function AgentsPage() {
   const [playbooks, setPlaybooks] = useState<PlaybookRow[]>([]);
   const [runningPlaybook, setRunningPlaybook] = useState<string | undefined>();
   const [pbTriggerSummary, setPbTriggerSummary] = useState("");
+  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set());
+  const [batchProcessing, setBatchProcessing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const [actioning, setActioning] = useState<string | undefined>();
@@ -960,12 +962,73 @@ export function AgentsPage() {
 
         {/* Draft review queue */}
         <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-4">
             <div className="flex items-center gap-2">
               <Inbox size={14} className="text-slate-700" />
               <p className="text-sm font-bold text-slate-900">Draft review queue</p>
               {drafts.length > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wide text-amber-800">{drafts.length} pending</span>}
+              {selectedDraftIds.size > 0 && (
+                <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wide text-cyan-800">
+                  {selectedDraftIds.size} selected
+                </span>
+              )}
             </div>
+            {drafts.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (selectedDraftIds.size === drafts.length) setSelectedDraftIds(new Set());
+                    else setSelectedDraftIds(new Set(drafts.map((d) => d.id)));
+                  }}
+                  className="text-[11px] font-medium text-slate-500 hover:text-slate-800"
+                >
+                  {selectedDraftIds.size === drafts.length ? "Clear selection" : "Select all"}
+                </button>
+                {selectedDraftIds.size > 0 && (
+                  <>
+                    <button
+                      onClick={async () => {
+                        setBatchProcessing(true);
+                        setError(undefined);
+                        try {
+                          await api.batchDraftAction({ ids: Array.from(selectedDraftIds), action: "sent" });
+                          setSelectedDraftIds(new Set());
+                          await load();
+                        } catch (err) {
+                          setError(err instanceof ApiError ? err.message : "Batch send failed.");
+                        } finally {
+                          setBatchProcessing(false);
+                        }
+                      }}
+                      disabled={batchProcessing}
+                      className="flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+                    >
+                      {batchProcessing ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                      Send {selectedDraftIds.size}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setBatchProcessing(true);
+                        setError(undefined);
+                        try {
+                          await api.batchDraftAction({ ids: Array.from(selectedDraftIds), action: "archived" });
+                          setSelectedDraftIds(new Set());
+                          await load();
+                        } catch (err) {
+                          setError(err instanceof ApiError ? err.message : "Batch archive failed.");
+                        } finally {
+                          setBatchProcessing(false);
+                        }
+                      }}
+                      disabled={batchProcessing}
+                      className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      <Archive size={11} /> Archive {selectedDraftIds.size}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           {drafts.length === 0 ? (
             <p className="px-5 py-8 text-center text-xs text-slate-500">No drafts waiting on your review.</p>
@@ -978,10 +1041,20 @@ export function AgentsPage() {
                 const vetting = d.agent_key === "agent14_carrier_vetting" ? (d.payload as VettingPayload) : undefined;
                 const claims = d.agent_key === "agent15_claims_osd" ? (d.payload as ClaimsPayload) : undefined;
                 return (
-                  <div key={d.id} className="px-5 py-4">
+                  <div key={d.id} className={`px-5 py-4 ${selectedDraftIds.has(d.id) ? "bg-cyan-50/40" : ""}`}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedDraftIds.has(d.id)}
+                            onChange={(e) => {
+                              const next = new Set(selectedDraftIds);
+                              if (e.target.checked) next.add(d.id); else next.delete(d.id);
+                              setSelectedDraftIds(next);
+                            }}
+                            className="h-3.5 w-3.5 rounded border-slate-300"
+                          />
                           <span className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wide ${PRIORITY_CLASS[output.priority]}`}>{output.priority}</span>
                           <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">{ctx.label}</span>
                           <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">{d.category?.replace(/_/g, " ") ?? "—"}</span>

@@ -20,6 +20,7 @@ import { useAuth } from "../contexts/AuthContext";
 
 const OPERATOR_DESKS = [
   { to: "/operator", label: "Manager Hub", icon: Gauge },
+  { to: "/operator/inbox", label: "Inbox", icon: Inbox },
   { to: "/operator/operations", label: "Operations Manager", icon: Inbox },
   { to: "/operator/carriers", label: "Carrier Desk", icon: Truck },
   { to: "/operator/billing", label: "Billing & Admin", icon: Receipt },

@@ -10,6 +10,7 @@ import { useAuth } from "../contexts/AuthContext";
 // the Client Portal tab) or bounced clients back to their portal.
 const OPERATOR_NAV_ITEMS = [
   { to: "/operator", label: "Manager Hub" },
+  { to: "/operator/inbox", label: "Inbox" },
   { to: "/operator/operations", label: "Operations Queue" },
   { to: "/operator/carriers", label: "Carrier Desk" },
   { to: "/operator/crm", label: "CRM Accounts" },
@@ -20,6 +21,7 @@ const OPERATOR_NAV_ITEMS = [
 const CLIENT_NAV_ITEMS = [
   { to: "/client-portal", label: "Client Portal" },
   { to: "/client-portal/dashboard", label: "Executive Dashboard" },
+  { to: "/client-portal/activity", label: "What we did" },
   { to: "/client-portal/tracking", label: "Ocean & Air Tracking" },
   { to: "/client-portal/documents", label: "Documents" },
   { to: "/client-portal/onboarding", label: "Onboarding" },
