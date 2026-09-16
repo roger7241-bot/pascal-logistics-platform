@@ -21,6 +21,8 @@ import { ClientDocumentsPage } from "./pages/ClientDocumentsPage";
 import { ClientSettingsPage } from "./pages/ClientSettingsPage";
 import { ClientActivityPage } from "./pages/ClientActivityPage";
 import { OperatorInboxPage } from "./pages/OperatorInboxPage";
+import { OperatorProspectsPage } from "./pages/OperatorProspectsPage";
+import { ClientTeamPage } from "./pages/ClientTeamPage";
 import { CallActivityPage } from "./pages/CallActivityPage";
 import { RapidDispatchDesk } from "./pages/RapidDispatchDesk";
 import { MagicUploadPage } from "./pages/MagicUploadPage";
@@ -69,6 +71,8 @@ export default function App() {
           <Route path="/client-portal/settings" element={<RequireAuth><ClientSettingsPage /></RequireAuth>} />
           <Route path="/client-portal/activity" element={<RequireAuth><ClientActivityPage /></RequireAuth>} />
           <Route path="/operator/inbox" element={<RequireAuth role="operator"><OperatorInboxPage /></RequireAuth>} />
+          <Route path="/operator/prospects" element={<RequireAuth role="operator"><OperatorProspectsPage /></RequireAuth>} />
+          <Route path="/client-portal/team" element={<RequireAuth><ClientTeamPage /></RequireAuth>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

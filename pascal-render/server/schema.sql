@@ -1423,3 +1423,99 @@ CREATE TABLE IF NOT EXISTS client_onboarding_steps (
 );
 
 CREATE INDEX IF NOT EXISTS idx_client_onboarding_org ON client_onboarding_steps (org_id, ordered_position);
+
+-- ============================================================================
+-- SPRINT 4 — enterprise-ready gaps
+-- Multi-user access per client account, prospect pipeline, SMS
+-- approve-reject tokens, calendar integration, Google SSO plumbing.
+-- ============================================================================
+
+-- Extend users with:
+--   client_sub_role — owner / ops / finance / viewer for client-side users
+--   google_id — for Google SSO sign-in (nullable — password path still works)
+--   invited_by / accepted_at — audit trail on multi-user invites
+--   last_login_at — activity signal for the account owner
+ALTER TABLE users ADD COLUMN IF NOT EXISTS client_sub_role TEXT
+  CHECK (client_sub_role IN ('owner', 'ops', 'finance', 'viewer'));
+ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS invited_by TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_users_google_id ON users (google_id);
+CREATE INDEX IF NOT EXISTS idx_users_org_role ON users (org_id, client_sub_role);
+
+-- Pending invites — email sent, user hasn't accepted yet. Token is a URL-safe
+-- opaque string in the accept link the invitee clicks.
+CREATE TABLE IF NOT EXISTS client_invites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL REFERENCES accounts (org_id) ON DELETE CASCADE,
+  invited_email TEXT NOT NULL,
+  invited_sub_role TEXT NOT NULL CHECK (invited_sub_role IN ('owner', 'ops', 'finance', 'viewer')),
+  token TEXT NOT NULL UNIQUE,
+  invited_by TEXT NOT NULL,
+  invited_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + INTERVAL '7 days',
+  accepted_at TIMESTAMPTZ,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired', 'revoked'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_invites_org ON client_invites (org_id, status);
+CREATE INDEX IF NOT EXISTS idx_client_invites_token ON client_invites (token);
+
+-- Prospect pipeline — every prospect Marketing produces cold-email drafts
+-- for lands here. Six-stage kanban board.
+CREATE TABLE IF NOT EXISTS prospects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_name TEXT NOT NULL,
+  contact_name TEXT,
+  contact_email TEXT,
+  contact_role TEXT,
+  industry TEXT,
+  freight_volume_monthly INT,
+  current_3pl_or_broker TEXT,
+  pain_signal TEXT,
+  source TEXT,                          -- how we found them
+  stage TEXT NOT NULL DEFAULT 'contacted' CHECK (stage IN ('contacted', 'replied', 'meeting_booked', 'proposal_sent', 'signed', 'lost')),
+  next_action TEXT,
+  next_action_at TIMESTAMPTZ,
+  notes TEXT,
+  converted_org_id TEXT REFERENCES accounts (org_id) ON DELETE SET NULL,
+  lost_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_prospects_stage ON prospects (stage, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_prospects_next_action ON prospects (next_action_at) WHERE next_action_at IS NOT NULL;
+
+-- SMS approve-reject tokens. When a gate lands and Roger gets SMS'd, we
+-- generate a 4-digit short code. Roger replies "YES 4271" or "NO 4271" and
+-- our webhook resolves the token → applies the action to the linked draft
+-- or task. Tokens expire in 24 hours; used tokens can't be replayed.
+CREATE TABLE IF NOT EXISTS notification_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  short_code TEXT NOT NULL UNIQUE,      -- 4-digit numeric, e.g. '4271'
+  target_type TEXT NOT NULL CHECK (target_type IN ('draft', 'task')),
+  target_id UUID NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + INTERVAL '24 hours',
+  used_at TIMESTAMPTZ,
+  used_action TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_tokens_code ON notification_tokens (short_code) WHERE used_at IS NULL;
+
+-- Google Calendar OAuth tokens — one row per operator (Roger). Refresh
+-- token stored so we can re-issue access tokens without asking again.
+CREATE TABLE IF NOT EXISTS google_calendar_integrations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  google_email TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  calendar_id TEXT NOT NULL DEFAULT 'primary',
+  connected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ,
+  UNIQUE (user_id, google_email)
+);

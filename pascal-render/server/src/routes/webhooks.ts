@@ -16,6 +16,9 @@
 import { Router, type Request, type Response } from "express";
 import { pool } from "../db/pool.js";
 import { categorizeAndDraft as chiefCategorize, persistDraft as chiefPersist, type InboundMessage } from "../services/agent6ChiefOfStaff.js";
+import { redeemSmsToken } from "../services/smsTokens.js";
+import { continueTask } from "../services/quarterback.js";
+import { dispatchDraft } from "../services/draftDispatch.js";
 
 export function createWebhooksRouter(): Router {
   const router = Router();
@@ -113,6 +116,55 @@ export function createWebhooksRouter(): Router {
     await pool.query(`UPDATE tracking_subscriptions SET last_sync_at = now() WHERE id = $1`, [subscriptionId]);
 
     return res.status(201).json({ received: true });
+  });
+
+  // Twilio inbound SMS webhook — Roger texts back "YES 4271" to approve
+  // or "NO 4271" to reject a gated task. Twilio sends the SMS body as
+  // "Body" in an application/x-www-form-urlencoded POST.
+  router.post("/webhooks/sms-inbound", async (req: Request, res: Response) => {
+    const body = typeof req.body?.Body === "string" ? req.body.Body : typeof req.body?.body === "string" ? req.body.body : "";
+    if (!body) {
+      return res.set("Content-Type", "text/xml").status(200).send("<Response></Response>");
+    }
+    try {
+      const redeemed = await redeemSmsToken(body);
+      if (!redeemed) {
+        return res.set("Content-Type", "text/xml").status(200).send(
+          `<Response><Message>No matching pending code found in your message. Reply "YES 1234" or "NO 1234" using the 4-digit code from the alert.</Message></Response>`,
+        );
+      }
+
+      let replyText = "";
+      if (redeemed.targetType === "task") {
+        if (redeemed.action === "sent") {
+          const result = await continueTask(redeemed.targetId);
+          replyText = `Approved. Play resumed — ${result.stepsExecuted} steps executed${result.stepsGated > 0 ? `, ${result.stepsGated} more gates.` : ", play complete."}`;
+        } else {
+          await pool.query(`UPDATE agent_tasks SET status = 'rejected', updated_at = now() WHERE id = $1`, [redeemed.targetId]);
+          replyText = "Rejected. Task closed.";
+        }
+      } else {
+        const drafts = await pool.query(`UPDATE agent_drafts SET status = $1, reviewed_at = now() WHERE id = $2 RETURNING agent_key, payload`, [redeemed.action, redeemed.targetId]);
+        if (drafts.rows.length > 0 && redeemed.action === "sent") {
+          try {
+            const disp = await dispatchDraft(drafts.rows[0]);
+            replyText = disp.attempted ? `Sent to ${disp.recipient}.` : `Marked sent but ${disp.reason}`;
+          } catch (err) {
+            replyText = `Marked sent but dispatch failed: ${err instanceof Error ? err.message : "error"}`;
+          }
+        } else {
+          replyText = `Draft ${redeemed.action}.`;
+        }
+      }
+      return res.set("Content-Type", "text/xml").status(200).send(
+        `<Response><Message>${replyText}</Message></Response>`,
+      );
+    } catch (err) {
+      console.error("SMS webhook processing failed:", err);
+      return res.set("Content-Type", "text/xml").status(200).send(
+        `<Response><Message>Something went wrong on our side. Roger will check the AI Agents board.</Message></Response>`,
+      );
+    }
   });
 
   return router;

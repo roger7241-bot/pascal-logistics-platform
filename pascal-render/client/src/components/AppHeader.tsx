@@ -28,6 +28,7 @@ const CLIENT_NAV_ITEMS = [
   { to: "/client-portal/compliance", label: "Compliance Vault" },
   { to: "/client-portal/calendar", label: "Calendar" },
   { to: "/border-telemetry", label: "Border Telemetry" },
+  { to: "/client-portal/team", label: "Team" },
   { to: "/client-portal/settings", label: "Settings" },
 ];
 

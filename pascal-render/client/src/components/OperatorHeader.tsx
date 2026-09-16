@@ -26,6 +26,7 @@ const OPERATOR_DESKS = [
   { to: "/operator/billing", label: "Billing & Admin", icon: Receipt },
   { to: "/operator/executive-review", label: "Executive Review", icon: ShieldCheck },
   { to: "/operator/leads", label: "Sales & Leads", icon: Megaphone },
+  { to: "/operator/prospects", label: "Prospect Pipeline", icon: Megaphone },
   { to: "/operator/calls", label: "Call Activity", icon: Phone },
   { to: "/operator/crm", label: "CRM & Accounts", icon: Users },
   { to: "/operator/facilities", label: "Facility SOPs", icon: Warehouse },

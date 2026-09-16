@@ -282,6 +282,24 @@ export const api = {
     if (previewOrgId) params.push(`orgId=${encodeURIComponent(previewOrgId)}`);
     return request<TResult>(`/api/client/activity${params.length ? `?${params.join("&")}` : ""}`);
   },
+  // Sprint 4 — multi-user + prospects + calendar
+  accountUsers: <TResult = unknown>(scope: "operator" | "client", previewOrgId?: string) =>
+    request<TResult>(`/api/${scope}/account-users${scope === "operator" && previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`),
+  inviteAccountUser: <TResult = unknown>(scope: "operator" | "client", payload: { email: string; subRole: string }, previewOrgId?: string) =>
+    request<TResult>(`/api/${scope}/account-users/invite${scope === "operator" && previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`, { method: "POST", body: payload }),
+  revokeAccountInvite: <TResult = unknown>(scope: "operator" | "client", id: string) =>
+    request<TResult>(`/api/${scope}/account-users/invites/${id}`, { method: "DELETE" }),
+  updateAccountUserRole: <TResult = unknown>(scope: "operator" | "client", id: string, subRole: string) =>
+    request<TResult>(`/api/${scope}/account-users/${id}/sub-role`, { method: "PUT", body: { subRole } }),
+  prospects: <TResult = unknown>(stage?: string) =>
+    request<TResult>(`/api/operator/prospects${stage ? `?stage=${stage}` : ""}`),
+  createProspect: <TResult = unknown>(payload: Record<string, unknown>) =>
+    request<TResult>("/api/operator/prospects", { method: "POST", body: payload }),
+  updateProspect: <TResult = unknown>(id: string, payload: Record<string, unknown>) =>
+    request<TResult>(`/api/operator/prospects/${id}`, { method: "PATCH", body: payload }),
+  calendarStatus: <TResult = unknown>() => request<TResult>("/api/operator/calendar/integration-status"),
+  createCalendarEvent: <TResult = unknown>(payload: { title: string; description?: string; startIso: string; endIso: string; attendees?: string[] }) =>
+    request<TResult>("/api/operator/calendar/create-event", { method: "POST", body: payload }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>
