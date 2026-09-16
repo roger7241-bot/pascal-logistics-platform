@@ -10,7 +10,7 @@
 // ============================================================================
 
 import { useEffect, useState } from "react";
-import { Activity, TrendingUp, TrendingDown, Minus, AlertCircle, Loader2, Lock } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, Minus, AlertCircle, Loader2, Lock, Printer } from "lucide-react";
 import { AppHeader } from "../components/AppHeader";
 import { api, ApiError } from "../config/api";
 
@@ -46,7 +46,7 @@ interface KpiTargets {
 }
 
 interface DashboardResponse {
-  account: { org_id: string; company_name: string; retainer_tier: string | null };
+  account: { org_id: string; company_name: string; retainer_tier: string | null; brand_color?: string | null; logo_url?: string | null };
   kpiTargets: KpiTargets | null;
   kpiSnapshots: KpiSnapshot[];
 }
@@ -153,21 +153,43 @@ export function ClientTier3DashboardPage() {
     { label: "Dead Stock", latestKey: "dead_stock_pct", targetKey: "dead_stock_target_pct", higherIsBetter: false, unit: "%" },
   ];
 
+  const brandColor = data.account.brand_color?.trim() || "#0891b2"; // cyan-600 fallback
+  const logoUrl = data.account.logo_url?.trim() || undefined;
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <AppHeader />
-      <main className="mx-auto max-w-6xl space-y-4 p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Activity size={18} className="text-slate-700" />
-            <h1 className="text-xl font-bold">Executive Dashboard</h1>
-            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">
-              {data.account.company_name} · updated {latest?.snapshot_date ?? "n/a"}
-            </span>
+    <div className="min-h-screen bg-slate-50 print:bg-white" style={{ ["--brand" as string]: brandColor } as React.CSSProperties}>
+      {/* Print stylesheet — inline so the download works without touching global CSS */}
+      <style>{`
+        @media print {
+          nav, .no-print { display: none !important; }
+          body { background: white !important; }
+          main { max-width: none !important; padding: 0 !important; }
+          .print-page { padding: 0.5in !important; }
+          section, .rounded-lg, .rounded-xl { break-inside: avoid; }
+        }
+      `}</style>
+      <div className="no-print"><AppHeader /></div>
+      <main className="mx-auto max-w-6xl space-y-4 p-6 print-page">
+        {/* Branded masthead — client's name + logo + accent color at the top */}
+        <div className="flex items-center justify-between border-b-4 pb-3" style={{ borderColor: brandColor }}>
+          <div className="flex items-center gap-3">
+            {logoUrl && <img src={logoUrl} alt={data.account.company_name} className="h-10 w-auto object-contain" />}
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-wide text-slate-500">Supply Chain Executive Report</p>
+              <h1 className="text-xl font-bold" style={{ color: brandColor }}>{data.account.company_name}</h1>
+              <p className="text-[11px] text-slate-500">Week ending {latest?.snapshot_date ?? "n/a"}{latest?.source === "demo" ? " · Demo data" : ""}</p>
+            </div>
           </div>
-          {latest?.source === "demo" && (
-            <span className="rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-violet-800">Demo data</span>
-          )}
+          <div className="flex items-center gap-2 no-print">
+            <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+              <Printer size={12} /> Download PDF
+            </button>
+          </div>
+        </div>
+
+        <div className="no-print flex items-center gap-2">
+          <Activity size={16} className="text-slate-500" />
+          <p className="text-xs text-slate-500">Live KPIs — auto-refresh runs overnight.</p>
         </div>
 
         {!latest ? (

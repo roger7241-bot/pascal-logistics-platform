@@ -611,7 +611,7 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     if (!orgId) return res.status(400).json({ error: "This account has no org on file." });
 
     const account = await pool.query(
-      `SELECT org_id, company_name, retainer_tier FROM accounts WHERE org_id = $1`,
+      `SELECT org_id, company_name, retainer_tier, brand_color, logo_url FROM accounts WHERE org_id = $1`,
       [orgId],
     );
     if (account.rowCount === 0) return res.status(404).json({ error: "Account not found." });

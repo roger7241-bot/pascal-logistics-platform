@@ -1392,3 +1392,34 @@ CREATE INDEX IF NOT EXISTS idx_milestones_exception ON shipment_milestones (is_e
 -- lands in awaiting_review and Roger clears the gate.
 ALTER TABLE agent_tasks
   ADD COLUMN IF NOT EXISTS next_step_index INT;
+
+-- ============================================================================
+-- SPRINT 2 — client-experience gaps
+-- Branding: per-client accent color + optional logo URL for the exec dashboard
+-- so the CFO sees THEIR brand on the report, not ours.
+-- Notification prefs: opt-in per email channel (daily brief, weekly exec
+-- pack, exception alerts). Clients that opt in get real email when Roger
+-- clicks send OR when the review-queue auto-sends.
+-- Onboarding: client-facing checklist so their day-1 experience is guided,
+-- not "here's a portal, figure it out".
+-- ============================================================================
+
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS brand_color TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS notification_preferences JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS client_onboarding_steps (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL REFERENCES accounts (org_id) ON DELETE CASCADE,
+  step_key TEXT NOT NULL,               -- 'poa_us' | 'poa_ca' | 'w9' | 'kickoff' | 'stripe' | 'first_shipment' | 'portal_walkthrough' | 'brokers_confirmed'
+  step_label TEXT NOT NULL,             -- human-readable label the client sees
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'blocked', 'not_applicable')),
+  notes TEXT,
+  completed_at TIMESTAMPTZ,
+  ordered_position INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (org_id, step_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_onboarding_org ON client_onboarding_steps (org_id, ordered_position);

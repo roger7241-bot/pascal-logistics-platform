@@ -11,13 +11,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
 import { PASCAL_SYSTEM_PREFIX } from "../services/pascalContext.js";
+import { sendOperationalEmail } from "../services/agentMailDispatch.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
 
 async function main() {
-  const accounts = await pool.query(
-    "SELECT org_id, company_name, primary_contact_name FROM accounts WHERE account_status = 'active'",
+  const accounts = await pool.query<{ org_id: string; company_name: string; primary_contact_name: string | null; primary_contact_email: string | null; notification_preferences: Record<string, boolean> }>(
+    "SELECT org_id, company_name, primary_contact_name, primary_contact_email, notification_preferences FROM accounts WHERE account_status = 'active'",
   );
   if (accounts.rowCount === 0) {
     console.log("No active accounts — skipping daily client briefs.");
@@ -109,13 +110,39 @@ Rules:
       },
     };
 
+    const draftSubject = `Morning update from Pascal Logistics — ${new Date().toISOString().slice(0, 10)}`;
+    const optedIn = account.notification_preferences?.dailyBriefEmail === true;
+    const contactEmail = account.primary_contact_email;
+    let autoSent = false;
+
+    // If the client opted in and we have their contact email, auto-send after
+    // drafting so the brief lands in their inbox without waiting on Roger's
+    // review click. Draft still gets recorded (marked sent) so it appears
+    // in the review queue as history.
+    if (optedIn && contactEmail && body.trim().length > 0) {
+      try {
+        const result = await sendOperationalEmail(contactEmail, draftSubject, body);
+        autoSent = !result.simulated;
+        console.log(`Auto-sent daily brief to ${clientName} <${contactEmail}> (${result.simulated ? "SIMULATED" : "delivered"}).`);
+      } catch (err) {
+        console.error(`Auto-send failed for ${clientName}:`, err);
+      }
+    }
+
     await pool.query(
-      `INSERT INTO agent_drafts (agent_key, kind, category, subject, source_ref, payload)
-       VALUES ('agent6_chief_of_staff', 'daily_client_brief', 'operational', $1, $2, $3::jsonb)`,
-      [`Morning brief for ${clientName}`, `daily_brief:client:${orgId}:${new Date().toISOString().slice(0, 10)}`, JSON.stringify(payload)],
+      `INSERT INTO agent_drafts (agent_key, kind, category, subject, source_ref, payload, status, reviewed_at, operator_notes)
+       VALUES ('agent6_chief_of_staff', 'daily_client_brief', 'operational', $1, $2, $3::jsonb, $4, $5, $6)`,
+      [
+        `Morning brief for ${clientName}`,
+        `daily_brief:client:${orgId}:${new Date().toISOString().slice(0, 10)}`,
+        JSON.stringify(payload),
+        autoSent ? "sent" : "pending",
+        autoSent ? new Date() : null,
+        autoSent ? `Auto-sent to ${contactEmail} — client is opted in to dailyBriefEmail.` : (optedIn ? "Opted in but no contact email on file — draft awaits manual review." : null),
+      ],
     );
     drafted += 1;
-    console.log(`Daily client brief drafted for ${clientName}.`);
+    console.log(`Daily client brief for ${clientName}: ${autoSent ? "SENT" : "drafted for review"}.`);
   }
 
   await pool.query(

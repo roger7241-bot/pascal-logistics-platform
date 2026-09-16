@@ -253,6 +253,25 @@ export const api = {
     request<TResult>(`/api/${scope}/tracking/subscribe${scope === "operator" && previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`, { method: "POST", body: payload }),
   trackingRefresh: <TResult = unknown>(scope: "operator" | "client", id: string) =>
     request<TResult>(`/api/${scope}/tracking/subscriptions/${id}/refresh`, { method: "POST", body: {} }),
+  // Sprint 2 — onboarding + documents + notification prefs + branding
+  onboardingStatus: <TResult = unknown>(scope: "operator" | "client", previewOrgId?: string) =>
+    request<TResult>(`/api/${scope}/onboarding-status${scope === "operator" && previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`),
+  updateOnboardingStep: <TResult = unknown>(orgId: string, stepKey: string, payload: { status: string; notes?: string }) =>
+    request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/onboarding-step/${encodeURIComponent(stepKey)}`, { method: "PUT", body: payload }),
+  requestUploadUrl: <TResult = unknown>(scope: "operator" | "client", payload: { filename: string; category: string; contentType: string }) =>
+    request<TResult>(`/api/${scope}/documents/upload-url`, { method: "POST", body: payload }),
+  confirmUpload: <TResult = unknown>(scope: "operator" | "client", payload: { objectKey: string; filename: string; category: string; shipmentId?: string }) =>
+    request<TResult>(`/api/${scope}/documents/confirm`, { method: "POST", body: payload }),
+  listDocuments: <TResult = unknown>(scope: "operator" | "client") =>
+    request<TResult>(`/api/${scope}/documents`),
+  documentDownloadUrl: <TResult = unknown>(scope: "operator" | "client", id: string) =>
+    request<TResult>(`/api/${scope}/documents/${id}/download-url`),
+  notificationPreferences: <TResult = unknown>(scope: "operator" | "client") =>
+    request<TResult>(`/api/${scope}/notification-preferences`),
+  updateNotificationPreferences: <TResult = unknown>(scope: "operator" | "client", preferences: Record<string, boolean>) =>
+    request<TResult>(`/api/${scope}/notification-preferences`, { method: "PUT", body: { preferences } }),
+  updateBranding: <TResult = unknown>(orgId: string, payload: { brandColor?: string; logoUrl?: string }) =>
+    request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/branding`, { method: "PUT", body: payload }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>

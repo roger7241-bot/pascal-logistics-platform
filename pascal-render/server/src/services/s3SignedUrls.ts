@@ -11,7 +11,7 @@
 // silently returning a broken link.
 // ============================================================================
 
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const SIGNED_URL_EXPIRY_SECONDS = 900; // 15 minutes, per spec
@@ -44,6 +44,31 @@ export async function generateVaultDownloadUrl(objectKey: string): Promise<Signe
     return { url, simulated: false, expiresInSeconds: SIGNED_URL_EXPIRY_SECONDS, expiresAtIso };
   } catch (err) {
     console.error(`S3 signed URL generation failed for key ${objectKey}:`, err instanceof Error ? err.message : err);
+    throw err;
+  }
+}
+
+// Client-side upload: return a presigned PUT URL the browser uploads directly
+// to. Same fallback behaviour as the download variant.
+export async function generateVaultUploadUrl(objectKey: string, contentType: string): Promise<SignedUrlResult> {
+  const expiresAtIso = new Date(Date.now() + SIGNED_URL_EXPIRY_SECONDS * 1000).toISOString();
+  if (!s3Client) {
+    console.log(`[SIMULATED S3 PRESIGNED PUT — no AWS credentials/bucket configured] key: ${objectKey} (${contentType})`);
+    return { url: `https://simulated-vault.example.com/put/${encodeURIComponent(objectKey)}`, simulated: true, expiresInSeconds: SIGNED_URL_EXPIRY_SECONDS, expiresAtIso };
+  }
+  try {
+    // Enforce SSE-KMS on upload if a key is configured.
+    const command = new PutObjectCommand({
+      Bucket: process.env.DOCUMENT_VAULT_BUCKET!,
+      Key: objectKey,
+      ContentType: contentType,
+      ServerSideEncryption: process.env.DOCUMENT_VAULT_KMS_KEY_ID ? "aws:kms" : undefined,
+      SSEKMSKeyId: process.env.DOCUMENT_VAULT_KMS_KEY_ID,
+    });
+    const url = await getSignedUrl(s3Client, command, { expiresIn: SIGNED_URL_EXPIRY_SECONDS });
+    return { url, simulated: false, expiresInSeconds: SIGNED_URL_EXPIRY_SECONDS, expiresAtIso };
+  } catch (err) {
+    console.error(`S3 presigned PUT generation failed for key ${objectKey}:`, err instanceof Error ? err.message : err);
     throw err;
   }
 }

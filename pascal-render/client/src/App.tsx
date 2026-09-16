@@ -16,6 +16,9 @@ import { ComplianceVaultPage } from "./pages/ComplianceVaultPage";
 import { ClientCalendarPage } from "./pages/ClientCalendarPage";
 import { ClientTier3DashboardPage } from "./pages/ClientTier3DashboardPage";
 import { ClientTrackingPage } from "./pages/ClientTrackingPage";
+import { ClientOnboardingPage } from "./pages/ClientOnboardingPage";
+import { ClientDocumentsPage } from "./pages/ClientDocumentsPage";
+import { ClientSettingsPage } from "./pages/ClientSettingsPage";
 import { CallActivityPage } from "./pages/CallActivityPage";
 import { RapidDispatchDesk } from "./pages/RapidDispatchDesk";
 import { MagicUploadPage } from "./pages/MagicUploadPage";
@@ -59,6 +62,9 @@ export default function App() {
           <Route path="/client-portal/calendar" element={<RequireAuth><ClientCalendarPage /></RequireAuth>} />
           <Route path="/client-portal/dashboard" element={<RequireAuth><ClientTier3DashboardPage /></RequireAuth>} />
           <Route path="/client-portal/tracking" element={<RequireAuth><ClientTrackingPage /></RequireAuth>} />
+          <Route path="/client-portal/onboarding" element={<RequireAuth><ClientOnboardingPage /></RequireAuth>} />
+          <Route path="/client-portal/documents" element={<RequireAuth><ClientDocumentsPage /></RequireAuth>} />
+          <Route path="/client-portal/settings" element={<RequireAuth><ClientSettingsPage /></RequireAuth>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
