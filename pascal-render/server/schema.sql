@@ -1551,3 +1551,80 @@ CREATE TABLE IF NOT EXISTS operator_settings (
 INSERT INTO operator_settings (key, value)
   VALUES ('delegation', '{"enabled": false, "delegate_agent_key": "agent18_ops_elena"}'::jsonb)
   ON CONFLICT (key) DO NOTHING;
+
+-- ============================================================================
+-- THREE HEADLESS UTILITY AGENTS — no personas, pure function
+--   19 ROI Reporter          — monthly retainer-defense value narrative
+--   20 AP Settlement         — carrier invoice reconciliation + voucher batch
+--   21 ERP Ingestion Bridge  — webhook / poll layer feeding downstream agents
+-- Signed as "Pascal Logistics Control Tower" to clients when they surface at
+-- all; usually they run silently and feed the persona agents.
+-- ============================================================================
+INSERT INTO agent_registry (agent_key, agent_number, name, role, description, status, human_in_loop) VALUES
+  ('agent19_roi_reporter',    19, 'ROI Reporter',      'Back-office',
+    'Monthly retainer-defense value tally: aggregates avoided costs (rate audit wins, USMCA saves, claim recoveries, renewals-caught-in-time), packages a client-facing ROI narrative delivered through Chief of Staff or Frank depending on retainer tier.',
+    'active', TRUE),
+  ('agent20_ap_settlement',   20, 'AP Freight Settlement', 'Back-office',
+    'Reconciles carrier invoices against original tender + BOL, generates clean voucher batches (QB / NetSuite / Dynamics), drafts dispute notices for unauthorized detention / fuel / accessorial charges. Headless utility signed as Pascal Logistics AP.',
+    'active', TRUE),
+  ('agent21_erp_bridge',      21, 'ERP Ingestion Bridge', 'Back-office',
+    'Receives client ERP webhooks / runs scheduled polls, normalizes shipment + PO + SO data, hands to Sanitizer + downstream agents. Headless system automation; never surfaces personality.',
+    'active', TRUE)
+ON CONFLICT (agent_key) DO NOTHING;
+
+-- ROI tally rollup table — every avoided cost across the platform gets
+-- appended here so the reporter can pull a clean month-over-month narrative.
+CREATE TABLE IF NOT EXISTS roi_credits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL REFERENCES accounts (org_id) ON DELETE CASCADE,
+  source_agent_key TEXT NOT NULL,
+  credit_type TEXT NOT NULL,   -- rate_audit_savings | claim_recovery | usmca_saved | renewal_caught | dispute_won | hours_saved | ...
+  headline TEXT NOT NULL,
+  dollar_value_usd NUMERIC(12,2) NOT NULL DEFAULT 0,
+  hours_saved_value_usd NUMERIC(12,2),
+  linked_draft_id UUID REFERENCES agent_drafts (id) ON DELETE SET NULL,
+  linked_task_id UUID REFERENCES agent_tasks (id) ON DELETE SET NULL,
+  captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reported_in_month DATE          -- populated when this credit lands in a monthly ROI report
+);
+
+CREATE INDEX IF NOT EXISTS idx_roi_credits_org_captured ON roi_credits (org_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_roi_credits_unreported ON roi_credits (org_id) WHERE reported_in_month IS NULL;
+
+-- Freight AP settlement — carrier invoices we reconcile against tender.
+CREATE TABLE IF NOT EXISTS carrier_invoice_settlements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL REFERENCES accounts (org_id) ON DELETE CASCADE,
+  carrier_name TEXT NOT NULL,
+  carrier_invoice_number TEXT NOT NULL,
+  shipment_ref TEXT,
+  tender_amount_usd NUMERIC(12,2),
+  invoiced_amount_usd NUMERIC(12,2) NOT NULL,
+  variance_usd NUMERIC(12,2) GENERATED ALWAYS AS (invoiced_amount_usd - COALESCE(tender_amount_usd, 0)) STORED,
+  disputed_line_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status TEXT NOT NULL DEFAULT 'pending_review' CHECK (status IN ('pending_review', 'approved_for_pay', 'disputed', 'paid', 'refunded')),
+  voucher_batch_ref TEXT,
+  reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (org_id, carrier_name, carrier_invoice_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_carrier_settlements_org_status ON carrier_invoice_settlements (org_id, status);
+
+-- ERP webhook ingestion log — every inbound event, dedup by external_ref.
+CREATE TABLE IF NOT EXISTS erp_ingestion_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL REFERENCES accounts (org_id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,     -- netsuite | quickbooks_online | dynamics_365 | sap_s4hana | odoo | ...
+  event_type TEXT NOT NULL,   -- po_created | so_shipped | inventory_adjusted | ...
+  external_ref TEXT NOT NULL, -- provider-native ID
+  raw_payload JSONB NOT NULL,
+  normalized_payload JSONB,
+  processing_status TEXT NOT NULL DEFAULT 'received' CHECK (processing_status IN ('received', 'normalized', 'routed', 'error')),
+  processed_at TIMESTAMPTZ,
+  error_detail TEXT,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (org_id, provider, external_ref, event_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_erp_events_org_status ON erp_ingestion_events (org_id, processing_status, received_at DESC);

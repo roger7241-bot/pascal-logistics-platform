@@ -30,6 +30,7 @@ import { createMultiUserRouter, createProspectsRouter, createCalendarRouter } fr
 import { createPublicLandedCostRouter, createAuthedLandedCostRouter } from "./routes/landedCost.js";
 import { createInviteAcceptRouter } from "./routes/publicInvites.js";
 import { createDocGenRouter } from "./routes/documentGeneration.js";
+import { createUtilityAgentRouter, createErpWebhookRouter } from "./routes/utilityAgents.js";
 import { createBillingRouter } from "./routes/billing.js";
 import { createLeadsRouter } from "./routes/leads.js";
 import { createVaultRouter } from "./routes/vault.js";
@@ -112,6 +113,7 @@ app.use("/api/webhooks", createWebhooksRouter());
 // an email becomes a prospect row + fires Chief of Staff draft.
 app.use("/api/public", createPublicLandedCostRouter());
 app.use("/api/public", createInviteAcceptRouter());
+app.use("/api/webhooks", createErpWebhookRouter());
 
 // Everything else below requires a real, verified session — this is the
 // actual fix for the "no auth layer, org_id trusted from request params"
@@ -160,6 +162,7 @@ app.use("/api/operator", createAuthedLandedCostRouter());
 app.use("/api/client", createAuthedLandedCostRouter());
 app.use("/api/operator", createDocGenRouter("operator"));
 app.use("/api/client", createDocGenRouter("client"));
+app.use("/api/operator", createUtilityAgentRouter());
 app.use("/api/operator", createBillingRouter());
 app.use("/api/operator", createLeadsRouter());
 app.use("/api/operator", createVaultRouter());

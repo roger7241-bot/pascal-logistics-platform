@@ -20,6 +20,7 @@
     "cron:daily-kpi-refresh": "node dist/cron/dailyKpiRefreshCron.js",
     "cron:weekly-exec-pack": "node dist/cron/weeklyExecPackCron.js",
     "cron:tracking-exception-sweep": "node dist/cron/trackingExceptionSweepCron.js",
+    "cron:monthly-roi": "node dist/cron/monthlyRoiCron.js",
     "dev": "tsx watch src/server.ts",
     "typecheck": "tsc --noEmit"
   },
