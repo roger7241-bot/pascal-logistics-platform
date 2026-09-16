@@ -5,6 +5,7 @@ import { KpiCard, ProgressBar } from "../components/KpiCard";
 import { AddressAutocompleteInput } from "../components/AddressAutocompleteInput";
 import { CurrentCarrierRates } from "../components/CurrentCarrierRates";
 import { ClientCapabilitiesEditor } from "../components/ClientCapabilitiesEditor";
+import { Tier3Panel } from "../components/Tier3Panel";
 import { capabilityLabel, capabilityBadgeClass, type ClientCapabilities } from "../lib/clientCapabilities";
 import { subdivisionsForCountry } from "../lib/subdivisions";
 import { api } from "../config/api";
@@ -96,7 +97,7 @@ const POA_LABEL: Record<string, { label: string; class: string }> = {
   expired_needs_renewal: { label: "POA Expired", class: "bg-rose-100 text-rose-700" },
 };
 
-const DETAIL_TABS = ["overview", "profile", "compliance", "facilities", "freight", "carriers", "rates"] as const;
+const DETAIL_TABS = ["overview", "profile", "compliance", "facilities", "freight", "carriers", "rates", "scm"] as const;
 const TAB_LABEL: Record<(typeof DETAIL_TABS)[number], string> = {
   overview: "Overview & Contacts",
   profile: "Shipping Profile",
@@ -105,6 +106,7 @@ const TAB_LABEL: Record<(typeof DETAIL_TABS)[number], string> = {
   freight: "Active & Historical Freight",
   carriers: "Assigned Carrier Accounts",
   rates: "Rates on File",
+  scm: "SCM (Tier 3)",
 };
 
 /** org_id + a short random suffix so two clients with the same/similar
@@ -604,6 +606,9 @@ export function CrmAccountsPage() {
                   )}
                   {detailTab === "rates" && (
                     <CurrentCarrierRates orgId={detail.account.orgId} title="Incumbent carrier rates by lane" />
+                  )}
+                  {detailTab === "scm" && (
+                    <Tier3Panel orgId={detail.account.orgId} />
                   )}
                 </div>
               </>

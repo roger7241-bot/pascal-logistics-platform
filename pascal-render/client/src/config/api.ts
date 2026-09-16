@@ -198,6 +198,18 @@ export const api = {
   playbooks: <TResult = unknown>() => request<TResult>("/api/operator/playbooks"),
   runPlaybook: <TResult = unknown>(key: string, payload: { triggerSummary: string; clientOrgId?: string; contextPayload?: Record<string, unknown> }) =>
     request<TResult>(`/api/operator/playbooks/${key}/run`, { method: "POST", body: payload }),
+  // Tier 3 ------------------------------------------------------------------
+  erpProviders: <TResult = unknown>() => request<TResult>("/api/operator/erp-providers"),
+  tier3Snapshot: <TResult = unknown>(orgId: string) =>
+    request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/tier3-snapshot`),
+  updateKnowledgeBase: <TResult = unknown>(orgId: string, knowledge: Record<string, unknown>) =>
+    request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/knowledge-base`, { method: "PUT", body: { knowledge } }),
+  updateKpiTargets: <TResult = unknown>(orgId: string, targets: Record<string, number | null>) =>
+    request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/kpi-targets`, { method: "PUT", body: targets }),
+  updateErpConnection: <TResult = unknown>(orgId: string, payload: { provider: string; demoMode?: boolean; config?: Record<string, unknown> }) =>
+    request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/erp-connection`, { method: "PUT", body: payload }),
+  refreshKpis: <TResult = unknown>(orgId: string) =>
+    request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/refresh-kpis`, { method: "POST", body: {} }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>
