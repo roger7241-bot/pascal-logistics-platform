@@ -21,6 +21,7 @@ import { pool } from "../db/pool.js";
 import { PASCAL_SYSTEM_PREFIX } from "./pascalContext.js";
 import type { PlaybookStep, Playbook } from "./playbooks.js";
 import type { TrailEntry } from "./orchestrator.js";
+import { getKnowledgeBase, renderKnowledgeBaseForPrompt } from "./clientKnowledgeBase.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -67,14 +68,20 @@ async function loadAgentMeta(agentKey: string): Promise<AgentMeta> {
 }
 
 // Compose the system prompt for a step. Layers: shared Pascal persona +
-// this agent's specific role + explicit multi-modal voice reminder +
+// this agent's specific role + Tier 3 client knowledge base (when applicable) +
 // step action + prior team contributions + output contract.
-function buildSystemPrompt(meta: AgentMeta, playbook: Playbook, step: PlaybookStep, prior: StepExecutionArgs["priorContributions"]): string {
+function buildSystemPrompt(
+  meta: AgentMeta,
+  playbook: Playbook,
+  step: PlaybookStep,
+  prior: StepExecutionArgs["priorContributions"],
+  tier3Block: string,
+): string {
   const priorBlock = prior.length > 0
     ? `TEAM WORK SO FAR — you are picking up from teammates. Their contributions:\n${prior.map((p) => `- ${p.agentName}: ${p.content}`).join("\n")}\n`
     : `You are running the first step of this play. Your contribution sets up the rest of the team.\n`;
 
-  return `${PASCAL_SYSTEM_PREFIX}
+  return `${PASCAL_SYSTEM_PREFIX}${tier3Block}
 ROLE — You are ${meta.name} (Agent ${meta.agentNumber}, ${meta.role}). ${meta.description}
 
 PLAYBOOK — "${playbook.name}". Full sequence: ${playbook.steps.map((s, i) => `(${i + 1}) ${s.action}`).join(" → ")}.
@@ -89,6 +96,20 @@ OUTPUT CONTRACT — return a JSON object with these keys:
 - recipientRole: "client" | "carrier" | "broker" | "prospect" | "internal"
 
 Return only the JSON, no prose around it.`;
+}
+
+// Look up the client's retainer tier + KB. If Tier 3, we pin the KB into
+// the system prompt so every draft speaks with deep client-specific context.
+async function loadTier3Block(clientOrgId: string | undefined): Promise<string> {
+  if (!clientOrgId) return "";
+  const account = await pool.query<{ retainer_tier: string | null }>(
+    `SELECT retainer_tier FROM accounts WHERE org_id = $1`,
+    [clientOrgId],
+  );
+  const tier = account.rows[0]?.retainer_tier;
+  if (!tier || !/tier[_\s]?3/i.test(tier)) return "";
+  const kb = await getKnowledgeBase(clientOrgId);
+  return `\n${renderKnowledgeBaseForPrompt(kb)}\n\n`;
 }
 
 // Deterministic fallback when Anthropic isn't reachable.
@@ -121,7 +142,8 @@ export async function executeAgentStep(args: StepExecutionArgs): Promise<StepExe
     recipientRole = fb.recipientRole;
     simulated = true;
   } else {
-    const systemPrompt = buildSystemPrompt(meta, args.playbook, args.step, args.priorContributions);
+    const tier3Block = await loadTier3Block(args.clientOrgId);
+    const systemPrompt = buildSystemPrompt(meta, args.playbook, args.step, args.priorContributions, tier3Block);
     const userPrompt = `Playbook context:\n${JSON.stringify(args.contextPayload, null, 2)}\n\nExecute your step now.`;
 
     const response = await client.messages.create({

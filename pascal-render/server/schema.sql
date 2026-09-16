@@ -1209,3 +1209,107 @@ CREATE TABLE IF NOT EXISTS agent_tasks (
 CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks (status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_tasks_current ON agent_tasks (current_agent_key, status);
 CREATE INDEX IF NOT EXISTS idx_agent_tasks_client ON agent_tasks (client_org_id, updated_at DESC);
+
+-- ============================================================================
+-- TIER 3 SUPPLY CHAIN MANAGER — per-client knowledge base + ERP integration
+-- Every Tier 3 client gets a persistent Knowledge Base pinned into every
+-- agent prompt (their SKUs, suppliers, lanes, terms, escalation ladder),
+-- an ERP connection (NetSuite / QB / Dynamics / Sage / Oracle — demo mode
+-- available so we can sell the tier before we buy the API licenses), KPI
+-- targets they set with their team, and daily KPI snapshots we roll up so
+-- the Friday exec pack has real data to compose from.
+-- ============================================================================
+
+-- Knowledge Base — the deep client knowledge an SCM would carry in their head
+-- after 6 months on the job. Held as JSONB so it can grow without schema churn.
+CREATE TABLE IF NOT EXISTS client_knowledge_base (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL UNIQUE REFERENCES accounts (org_id) ON DELETE CASCADE,
+  -- Structured JSONB with keys:
+  --   skus:         [{ sku, description, uom, weight_lb, dims_in, hs_code, coo, safety_stock_units, moq, lead_time_days }]
+  --   suppliers:    [{ name, country, terms, otif_target_pct, contact_name, contact_email, notes }]
+  --   lanes:        [{ origin, destination, mode, typical_carrier, typical_transit_days, notes }]
+  --   customers:    [{ name, priority_tier, otif_target_pct, sla_notes }]
+  --   escalation:   [{ level, name, role, phone, email, when_to_call }]
+  --   seasonality:  [{ pattern, months, notes }]
+  --   erp_notes:    freeform text — anything specific to this client's ERP quirks
+  knowledge JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_kb_org ON client_knowledge_base (org_id);
+
+-- KPI targets the client's leadership sets with us. We benchmark against these
+-- and flag drift on the weekly exec pack.
+CREATE TABLE IF NOT EXISTS client_kpi_targets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL UNIQUE REFERENCES accounts (org_id) ON DELETE CASCADE,
+  -- Executive-visible (weekly)
+  otif_target_pct NUMERIC(5,2),           -- 95.00 = 95% OTIF
+  perfect_order_target_pct NUMERIC(5,2),
+  freight_to_revenue_target_pct NUMERIC(5,2),
+  cash_to_cash_target_days INT,
+  inventory_turns_target NUMERIC(5,2),
+  -- Operational (daily)
+  order_fill_rate_target_pct NUMERIC(5,2),
+  supplier_otif_target_pct NUMERIC(5,2),
+  damage_rate_target_pct NUMERIC(5,2),
+  -- Analytical (quarterly)
+  forecast_accuracy_mape_target_pct NUMERIC(5,2), -- lower is better
+  dead_stock_target_pct NUMERIC(5,2),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Daily KPI snapshots — one row per client per day. Rolled up from ERP pull
+-- + our own agent activity data.
+CREATE TABLE IF NOT EXISTS client_kpi_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL REFERENCES accounts (org_id) ON DELETE CASCADE,
+  snapshot_date DATE NOT NULL,
+  otif_pct NUMERIC(5,2),
+  perfect_order_pct NUMERIC(5,2),
+  freight_to_revenue_pct NUMERIC(5,2),
+  cash_to_cash_days INT,
+  inventory_turns NUMERIC(5,2),
+  order_fill_rate_pct NUMERIC(5,2),
+  supplier_otif_pct NUMERIC(5,2),
+  damage_rate_pct NUMERIC(5,2),
+  forecast_accuracy_mape_pct NUMERIC(5,2),
+  dead_stock_pct NUMERIC(5,2),
+  -- Raw counts underlying the KPIs — kept so we can drill in
+  orders_total INT DEFAULT 0,
+  orders_shipped_ontime INT DEFAULT 0,
+  orders_shipped_infull INT DEFAULT 0,
+  orders_damaged INT DEFAULT 0,
+  freight_cost_usd NUMERIC(12,2),
+  revenue_usd NUMERIC(12,2),
+  inventory_value_usd NUMERIC(12,2),
+  source TEXT NOT NULL DEFAULT 'demo' CHECK (source IN ('demo', 'erp_pull', 'manual')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (org_id, snapshot_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_kpi_snapshots_org_date ON client_kpi_snapshots (org_id, snapshot_date DESC);
+
+-- ERP connection registry — per client, one active connection (they usually
+-- run one ERP). Credentials stay OUT of the DB; only the pointer + status +
+-- config live here. Actual OAuth tokens / API keys hold in secrets manager.
+CREATE TABLE IF NOT EXISTS erp_connections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL UNIQUE REFERENCES accounts (org_id) ON DELETE CASCADE,
+  provider TEXT NOT NULL CHECK (provider IN ('netsuite', 'quickbooks_online', 'quickbooks_desktop', 'dynamics_365', 'sage_intacct', 'sage_x3', 'oracle_fusion', 'sap_s4hana', 'sap_ecc', 'odoo', 'demo')),
+  connection_status TEXT NOT NULL DEFAULT 'demo' CHECK (connection_status IN ('demo', 'not_connected', 'pending_auth', 'connected', 'error', 'suspended')),
+  demo_mode BOOLEAN NOT NULL DEFAULT TRUE,
+  last_sync_at TIMESTAMPTZ,
+  last_sync_status TEXT,
+  last_error TEXT,
+  -- Provider-specific config (account ID, subsidiary, realm ID, tenant, base URL, etc.)
+  config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_erp_connections_org ON erp_connections (org_id);
+CREATE INDEX IF NOT EXISTS idx_erp_connections_status ON erp_connections (connection_status);
