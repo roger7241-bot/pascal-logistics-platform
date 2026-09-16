@@ -601,5 +601,45 @@ export function createClientRouter(wsManager: WsManager, telemetryService: Borde
     });
   });
 
+  // ==========================================================================
+  // TIER 3 CLIENT DASHBOARD — client-facing view of KPIs + targets. NEVER
+  // returns the KB (that's internal), NEVER returns the ERP credentials.
+  // 403 if the client isn't on Tier 3. Operators can preview via ?orgId=…
+  // ==========================================================================
+  router.get("/tier3-dashboard", async (req: Request, res: Response) => {
+    const orgId = resolveClientOrgId(req);
+    if (!orgId) return res.status(400).json({ error: "This account has no org on file." });
+
+    const account = await pool.query(
+      `SELECT org_id, company_name, retainer_tier FROM accounts WHERE org_id = $1`,
+      [orgId],
+    );
+    if (account.rowCount === 0) return res.status(404).json({ error: "Account not found." });
+
+    const tier = account.rows[0].retainer_tier as string | null;
+    if (!tier || !/tier[_\s]?3/i.test(tier)) {
+      return res.status(403).json({ error: "Tier 3 dashboard is available with the Supply Chain Manager retainer.", tier });
+    }
+
+    const [targets, snapshots] = await Promise.all([
+      pool.query(`SELECT * FROM client_kpi_targets WHERE org_id = $1`, [orgId]),
+      pool.query(
+        `SELECT snapshot_date, otif_pct, perfect_order_pct, freight_to_revenue_pct,
+                inventory_turns, order_fill_rate_pct, supplier_otif_pct, damage_rate_pct,
+                dead_stock_pct, orders_total, orders_shipped_ontime, orders_shipped_infull,
+                freight_cost_usd, revenue_usd, inventory_value_usd, source
+         FROM client_kpi_snapshots WHERE org_id = $1
+         ORDER BY snapshot_date DESC LIMIT 30`,
+        [orgId],
+      ),
+    ]);
+
+    return res.status(200).json({
+      account: account.rows[0],
+      kpiTargets: targets.rows[0] ?? null,
+      kpiSnapshots: snapshots.rows,
+    });
+  });
+
   return router;
 }

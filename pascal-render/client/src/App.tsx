@@ -14,6 +14,7 @@ import { DocumentVaultPage } from "./pages/DocumentVaultPage";
 import { CalendarPage } from "./pages/CalendarPage";
 import { ComplianceVaultPage } from "./pages/ComplianceVaultPage";
 import { ClientCalendarPage } from "./pages/ClientCalendarPage";
+import { ClientTier3DashboardPage } from "./pages/ClientTier3DashboardPage";
 import { CallActivityPage } from "./pages/CallActivityPage";
 import { RapidDispatchDesk } from "./pages/RapidDispatchDesk";
 import { MagicUploadPage } from "./pages/MagicUploadPage";
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="/client-portal" element={<RequireAuth><ClientPortalPage /></RequireAuth>} />
           <Route path="/client-portal/compliance" element={<RequireAuth><ComplianceVaultPage /></RequireAuth>} />
           <Route path="/client-portal/calendar" element={<RequireAuth><ClientCalendarPage /></RequireAuth>} />
+          <Route path="/client-portal/dashboard" element={<RequireAuth><ClientTier3DashboardPage /></RequireAuth>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

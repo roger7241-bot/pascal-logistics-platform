@@ -210,6 +210,9 @@ export const api = {
     request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/erp-connection`, { method: "PUT", body: payload }),
   refreshKpis: <TResult = unknown>(orgId: string) =>
     request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/refresh-kpis`, { method: "POST", body: {} }),
+  // Client-portal Tier 3 dashboard
+  clientTier3Dashboard: <TResult = unknown>(previewOrgId?: string) =>
+    request<TResult>(`/api/client/tier3-dashboard${previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>
