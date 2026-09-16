@@ -28,6 +28,8 @@ export interface RunPlaybookArgs {
   clientOrgId?: string;
   contextPayload: Record<string, unknown>; // whatever data the play needs to reason about
   originAgentKey?: string;                // if a specific agent triggered this; defaults to quarterback
+  startFromIndex?: number;                // resume from this step index (used by continueTask)
+  existingTaskId?: string;                // when set, we UPDATE this task instead of creating a new one
 }
 
 export interface PlaybookRunResult {
@@ -46,24 +48,34 @@ export async function runPlaybook(args: RunPlaybookArgs): Promise<PlaybookRunRes
   if (!playbook) throw new Error(`Unknown playbook: ${args.playbookKey}`);
 
   const originAgentKey = args.originAgentKey ?? playbook.quarterback;
-  const firstStep = playbook.steps[0];
+  const firstStep = playbook.steps[args.startFromIndex ?? 0] ?? playbook.steps[0];
 
   // Create the task under the quarterback with the first step's agent
-  // marked as current. The trail records the QB "calling the play".
-  const taskId = await createTask({
-    taskType: `playbook:${playbook.key}`,
-    originAgentKey,
-    nextAgentKey: firstStep.agentKey,
-    clientOrgId: args.clientOrgId,
-    subject: `${playbook.name} — ${args.triggerSummary}`,
-    payload: {
-      playbookKey: playbook.key,
-      quarterback: playbook.quarterback,
-      trigger: args.triggerSummary,
-      ...args.contextPayload,
-    },
-    originContribution: `${playbook.quarterback === "agent6_chief_of_staff" ? "Chief of Staff" : "Executive Assistant"} called the play: ${playbook.name}. ${args.triggerSummary}`,
-  });
+  // marked as current — or reuse an existing task on resume.
+  let taskId: string;
+  if (args.existingTaskId) {
+    taskId = args.existingTaskId;
+    // Clear the awaiting_review status so the loop can advance normally.
+    await pool.query(
+      `UPDATE agent_tasks SET status = 'in_progress', human_gate_reason = NULL, updated_at = now() WHERE id = $1`,
+      [taskId],
+    );
+  } else {
+    taskId = await createTask({
+      taskType: `playbook:${playbook.key}`,
+      originAgentKey,
+      nextAgentKey: firstStep.agentKey,
+      clientOrgId: args.clientOrgId,
+      subject: `${playbook.name} — ${args.triggerSummary}`,
+      payload: {
+        playbookKey: playbook.key,
+        quarterback: playbook.quarterback,
+        trigger: args.triggerSummary,
+        ...args.contextPayload,
+      },
+      originContribution: `${playbook.quarterback === "agent6_chief_of_staff" ? "Chief of Staff" : "Executive Assistant"} called the play: ${playbook.name}. ${args.triggerSummary}`,
+    });
+  }
 
   // Preload agent names once for use by extractPriorContributions.
   const agentNameMap = new Map<string, string>();
@@ -75,9 +87,10 @@ export async function runPlaybook(args: RunPlaybookArgs): Promise<PlaybookRunRes
   let currentAgentKey = firstStep.agentKey;
   // Accumulate the playbook payload as each step contributes.
   let livePayload: Record<string, unknown> = { ...args.contextPayload, playbookKey: playbook.key, trigger: args.triggerSummary };
+  const startFromIndex = args.startFromIndex ?? 0;
 
   // Execute each step in order. Stop at the first gate.
-  for (let i = 0; i < playbook.steps.length; i++) {
+  for (let i = startFromIndex; i < playbook.steps.length; i++) {
     const step = playbook.steps[i];
 
     if (step.skipIf && step.skipIf(args.contextPayload)) {
@@ -141,8 +154,8 @@ export async function runPlaybook(args: RunPlaybookArgs): Promise<PlaybookRunRes
     };
     stepsExecuted += 1;
 
-    // Gate for review — stop the run. Roger clears the gate and the
-    // remaining steps resume in a follow-up (Phase-3 "continue play" UI).
+    // Gate for review — stop the run. Roger clears the gate; UI's Continue
+    // button calls continueTask(taskId), which resumes at i + 1.
     if (step.gateForReview) {
       await advanceTask({
         taskId,
@@ -151,6 +164,10 @@ export async function runPlaybook(args: RunPlaybookArgs): Promise<PlaybookRunRes
         contribution: `Gated for Roger: ${step.gateForReview}`,
         humanGateReason: step.gateForReview,
       });
+      await pool.query(
+        `UPDATE agent_tasks SET next_step_index = $1 WHERE id = $2`,
+        [i + 1, taskId],
+      );
       stepsGated += 1;
       return { taskId, playbook, stepsExecuted, stepsGated };
     }
@@ -180,6 +197,31 @@ export async function runPlaybook(args: RunPlaybookArgs): Promise<PlaybookRunRes
   );
 
   return { taskId, playbook, stepsExecuted, stepsGated, clientNarrative };
+}
+
+// Resume a gated task from where it stopped. Reads next_step_index off the
+// task row and re-invokes runPlaybook with startFromIndex + existingTaskId.
+export async function continueTask(taskId: string): Promise<PlaybookRunResult> {
+  const taskRow = await pool.query(
+    `SELECT id, task_type, subject, payload, next_step_index, client_org_id, status FROM agent_tasks WHERE id = $1`,
+    [taskId],
+  );
+  if (taskRow.rowCount === 0) throw new Error("Task not found.");
+  const t = taskRow.rows[0];
+  if (t.status !== "awaiting_review") throw new Error(`Task is not awaiting review (status: ${t.status}).`);
+
+  const playbookKey = (t.payload?.playbookKey as string) ?? String(t.task_type ?? "").replace(/^playbook:/, "");
+  const trigger = (t.payload?.trigger as string) ?? t.subject;
+  const startFromIndex = typeof t.next_step_index === "number" ? t.next_step_index : 0;
+
+  return runPlaybook({
+    playbookKey,
+    triggerSummary: trigger,
+    clientOrgId: t.client_org_id ?? undefined,
+    contextPayload: (t.payload as Record<string, unknown>) ?? {},
+    startFromIndex,
+    existingTaskId: taskId,
+  });
 }
 
 // Compose the client-visible narrative — the "here's what we did"

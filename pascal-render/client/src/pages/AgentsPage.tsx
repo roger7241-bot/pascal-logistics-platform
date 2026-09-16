@@ -647,6 +647,23 @@ export function AgentsPage() {
                         </ol>
                       </details>
                     )}
+                    {t.status === "awaiting_review" && (
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          onClick={async () => {
+                            try {
+                              await api.continueTask(t.id);
+                              await load();
+                            } catch (err) {
+                              setError(err instanceof ApiError ? err.message : "Continue failed.");
+                            }
+                          }}
+                          className="flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
+                        >
+                          <Play size={11} /> Continue play
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}

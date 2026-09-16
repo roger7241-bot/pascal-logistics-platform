@@ -223,6 +223,8 @@ export const api = {
   playbooks: <TResult = unknown>() => request<TResult>("/api/operator/playbooks"),
   runPlaybook: <TResult = unknown>(key: string, payload: { triggerSummary: string; clientOrgId?: string; contextPayload?: Record<string, unknown> }) =>
     request<TResult>(`/api/operator/playbooks/${key}/run`, { method: "POST", body: payload }),
+  continueTask: <TResult = unknown>(taskId: string) =>
+    request<TResult>(`/api/operator/agent-tasks/${taskId}/continue`, { method: "POST", body: {} }),
   // Tier 3 ------------------------------------------------------------------
   erpProviders: <TResult = unknown>() => request<TResult>("/api/operator/erp-providers"),
   tier3Snapshot: <TResult = unknown>(orgId: string) =>

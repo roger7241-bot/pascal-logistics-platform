@@ -26,6 +26,7 @@
 // ============================================================================
 
 import { pool } from "../db/pool.js";
+import { notifyRoger } from "./rogerNotify.js";
 
 export interface TrailEntry {
   agentKey: string;
@@ -96,7 +97,15 @@ export async function createTask(args: CreateTaskArgs): Promise<string> {
       args.humanGateReason ?? null, args.linkedDraftId ?? null,
     ],
   );
-  return result.rows[0].id as string;
+  const taskId = result.rows[0].id as string;
+  if (args.humanGateReason) {
+    // Fire-and-forget — never let a notification delay task creation.
+    void notifyRoger({
+      subject: `[Gated] ${args.subject}`,
+      message: `${args.humanGateReason}\n\nOpen the AI Agents board to review.`,
+    }).catch((err) => console.error("Gate notification failed:", err));
+  }
+  return taskId;
 }
 
 // Move a task from one agent to another. Appends to the trail.
@@ -131,6 +140,15 @@ export async function advanceTask(args: AdvanceTaskArgs): Promise<void> {
       args.taskId,
     ],
   );
+  if (args.humanGateReason) {
+    // Get task subject for a readable notification.
+    const t = await pool.query(`SELECT subject FROM agent_tasks WHERE id = $1`, [args.taskId]);
+    const subject = t.rows[0]?.subject ?? "task";
+    void notifyRoger({
+      subject: `[Gated] ${subject}`,
+      message: `${args.humanGateReason}\n\nOpen the AI Agents board to review.`,
+    }).catch((err) => console.error("Gate notification failed:", err));
+  }
 }
 
 // Mark a task complete (or rejected / blocked). Terminal state.

@@ -23,6 +23,7 @@ import { createCarriersRouter } from "./routes/carriers.js";
 import { createAgentsRouter } from "./routes/agents.js";
 import { createTier3Router } from "./routes/tier3.js";
 import { createTrackingRouter } from "./routes/tracking.js";
+import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createBillingRouter } from "./routes/billing.js";
 import { createLeadsRouter } from "./routes/leads.js";
 import { createVaultRouter } from "./routes/vault.js";
@@ -94,6 +95,11 @@ app.use("/api/auth", createAuthRouter());
 // mid-dock, shouldn't need to log in first.
 app.use("/api/v1/magic-upload", createMagicUploadRouter());
 app.use("/api/v1/track", createPublicTrackingRouter());
+
+// Public webhooks — mounted BEFORE auth middleware so external providers
+// (AgentMail inbound email, Terminal49 / CargoAi tracking) can POST without
+// a session. Each handler validates its own payload shape.
+app.use("/api/webhooks", createWebhooksRouter());
 
 // Everything else below requires a real, verified session — this is the
 // actual fix for the "no auth layer, org_id trusted from request params"

@@ -1387,3 +1387,8 @@ CREATE TABLE IF NOT EXISTS shipment_milestones (
 
 CREATE INDEX IF NOT EXISTS idx_milestones_sub ON shipment_milestones (subscription_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_milestones_exception ON shipment_milestones (is_exception, reported_at DESC);
+
+-- Playbook continuation — remember which step to resume from when a task
+-- lands in awaiting_review and Roger clears the gate.
+ALTER TABLE agent_tasks
+  ADD COLUMN IF NOT EXISTS next_step_index INT;

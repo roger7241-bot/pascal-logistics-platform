@@ -24,7 +24,8 @@ import { categorizeAndDraft as eaCategorize, persistDraft as eaPersist, type EaR
 import { categorizeAndDraft as legalCategorize, persistDraft as legalPersist, type LegalWatchEvent } from "../services/agent10LegalWatcher.js";
 import { categorizeAndDraft as hrCategorize, persistDraft as hrPersist, type HrRequest } from "../services/agent11Hr.js";
 import { listRecentTasks } from "../services/orchestrator.js";
-import { runPlaybook } from "../services/quarterback.js";
+import { dispatchDraft } from "../services/draftDispatch.js";
+import { runPlaybook, continueTask } from "../services/quarterback.js";
 import { listPlaybooks } from "../services/playbooks.js";
 
 export function createAgentsRouter(): Router {
@@ -92,7 +93,30 @@ export function createAgentsRouter(): Router {
       params,
     );
     if (result.rowCount === 0) return res.status(404).json({ error: "Draft not found." });
-    return res.status(200).json({ draft: result.rows[0] });
+
+    // Actually send the email when the operator hits "Send as drafted".
+    // The result surfaces to the UI so Roger sees whether the recipient was
+    // resolved and whether the send succeeded (or was simulated because
+    // AGENTMAIL_API_KEY isn't configured).
+    let dispatch = undefined as Awaited<ReturnType<typeof dispatchDraft>> | undefined;
+    if (status === "sent") {
+      try {
+        dispatch = await dispatchDraft(result.rows[0]);
+        // Record the dispatch outcome on operator_notes so future queries
+        // see it. Non-fatal if it fails — we don't want to un-send.
+        const note = dispatch.attempted
+          ? `Sent to ${dispatch.recipient}${dispatch.emailResult?.simulated ? " (SIMULATED — AGENTMAIL_API_KEY not set)" : ""}`
+          : `Not sent: ${dispatch.reason}`;
+        await pool.query(
+          `UPDATE agent_drafts SET operator_notes = COALESCE(operator_notes || E'\\n', '') || $1 WHERE id = $2`,
+          [note, req.params.id],
+        );
+      } catch (err) {
+        console.error("Draft dispatch failed:", err);
+      }
+    }
+
+    return res.status(200).json({ draft: result.rows[0], dispatch });
   });
 
   // Test-only endpoint — inject a fake inbound message so Roger can watch
@@ -314,6 +338,23 @@ export function createAgentsRouter(): Router {
       });
     } catch (err) {
       return res.status(400).json({ error: err instanceof Error ? err.message : "Playbook run failed." });
+    }
+  });
+
+  // Continue a gated task — Roger clears the gate, the remaining playbook
+  // steps run from where they stopped.
+  router.post("/agent-tasks/:id/continue", async (req: Request, res: Response) => {
+    try {
+      const result = await continueTask(req.params.id);
+      return res.status(200).json({
+        taskId: result.taskId,
+        playbookKey: result.playbook.key,
+        stepsExecuted: result.stepsExecuted,
+        stepsGated: result.stepsGated,
+        clientNarrative: result.clientNarrative,
+      });
+    } catch (err) {
+      return res.status(400).json({ error: err instanceof Error ? err.message : "Continue failed." });
     }
   });
 
