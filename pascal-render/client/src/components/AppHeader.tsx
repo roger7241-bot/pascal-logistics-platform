@@ -20,6 +20,7 @@ const OPERATOR_NAV_ITEMS = [
 const CLIENT_NAV_ITEMS = [
   { to: "/client-portal", label: "Client Portal" },
   { to: "/client-portal/dashboard", label: "Executive Dashboard" },
+  { to: "/client-portal/tracking", label: "Ocean & Air Tracking" },
   { to: "/client-portal/compliance", label: "Compliance Vault" },
   { to: "/client-portal/calendar", label: "Calendar" },
   { to: "/border-telemetry", label: "Border Telemetry" },

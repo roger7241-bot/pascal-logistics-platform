@@ -1335,3 +1335,55 @@ UPDATE agent_registry
        updated_at = now()
  WHERE agent_key = 'agent11_hr'
    AND status <> 'active';
+
+-- ============================================================================
+-- OCEAN + AIR TRACKING — subscribe once, receive milestones forever
+-- We subscribe to an aggregator (Terminal49 for ocean, CargoAi for air) with
+-- a container / MAWB / HAWB number. The aggregator webhooks milestone events
+-- as they land — booking confirmed, gated in, loaded, sailed, discharged,
+-- rolled, in transit, held, released, gated out, delivered. Everything gets
+-- appended to shipment_milestones. Demo adapter ships realistic events off
+-- a seeded RNG so we can demo the whole client-portal timeline before wiring
+-- live credentials.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS tracking_subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL REFERENCES accounts (org_id) ON DELETE CASCADE,
+  mode TEXT NOT NULL CHECK (mode IN ('ocean', 'air')),
+  provider TEXT NOT NULL CHECK (provider IN ('terminal49', 'cargoai', 'demo')),
+  tracking_number TEXT NOT NULL,       -- container # / MAWB / booking #
+  carrier_scac_or_iata TEXT,            -- MSCU / MAEU / SUDU / MAERSK; IATA prefix like 020 (LH), 176 (EK)
+  bill_of_lading TEXT,
+  booking_number TEXT,
+  reference TEXT,                       -- client's PO # or internal ref
+  origin TEXT,
+  destination TEXT,
+  status TEXT NOT NULL DEFAULT 'subscribed' CHECK (status IN ('subscribed', 'demo', 'completed', 'error', 'cancelled')),
+  demo_mode BOOLEAN NOT NULL DEFAULT TRUE,
+  last_sync_at TIMESTAMPTZ,
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (org_id, mode, tracking_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tracking_sub_org ON tracking_subscriptions (org_id, mode, status);
+
+CREATE TABLE IF NOT EXISTS shipment_milestones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  subscription_id UUID NOT NULL REFERENCES tracking_subscriptions (id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL,             -- booking_confirmed / gate_in / loaded / sailed / discharged / gated_out / delivered / exception / hold / rolled / released / in_transit / arrived
+  event_code TEXT,                       -- carrier's raw code (CIC / DPC / VDF ...)
+  location TEXT,                         -- port name or airport IATA
+  latitude NUMERIC(9,6),
+  longitude NUMERIC(9,6),
+  occurred_at TIMESTAMPTZ NOT NULL,
+  reported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  is_exception BOOLEAN NOT NULL DEFAULT FALSE,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  source TEXT NOT NULL DEFAULT 'demo' CHECK (source IN ('demo', 'terminal49_webhook', 'terminal49_pull', 'cargoai_webhook', 'cargoai_pull', 'manual'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_milestones_sub ON shipment_milestones (subscription_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_milestones_exception ON shipment_milestones (is_exception, reported_at DESC);

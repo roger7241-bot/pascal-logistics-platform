@@ -238,6 +238,19 @@ export const api = {
   // Client-portal Tier 3 dashboard
   clientTier3Dashboard: <TResult = unknown>(previewOrgId?: string) =>
     request<TResult>(`/api/client/tier3-dashboard${previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`),
+  // Tracking (ocean + air) — same shape on operator + client sides
+  trackingSubscriptions: <TResult = unknown>(scope: "operator" | "client", mode?: "ocean" | "air", previewOrgId?: string) => {
+    const params: string[] = [];
+    if (mode) params.push(`mode=${mode}`);
+    if (scope === "operator" && previewOrgId) params.push(`orgId=${encodeURIComponent(previewOrgId)}`);
+    return request<TResult>(`/api/${scope}/tracking/subscriptions${params.length ? `?${params.join("&")}` : ""}`);
+  },
+  trackingSubscription: <TResult = unknown>(scope: "operator" | "client", id: string) =>
+    request<TResult>(`/api/${scope}/tracking/subscriptions/${id}`),
+  trackingSubscribe: <TResult = unknown>(scope: "operator" | "client", payload: { mode: "ocean" | "air"; trackingNumber: string; carrierScacOrIata?: string; billOfLading?: string; bookingNumber?: string; reference?: string; origin?: string; destination?: string; demoMode?: boolean }, previewOrgId?: string) =>
+    request<TResult>(`/api/${scope}/tracking/subscribe${scope === "operator" && previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`, { method: "POST", body: payload }),
+  trackingRefresh: <TResult = unknown>(scope: "operator" | "client", id: string) =>
+    request<TResult>(`/api/${scope}/tracking/subscriptions/${id}/refresh`, { method: "POST", body: {} }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>
