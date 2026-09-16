@@ -189,6 +189,31 @@ export const api = {
     onboardingStep?: string;
     priorContext?: string;
   }) => request<TResult>("/api/operator/agents/executive-assistant/simulate", { method: "POST", body: payload }),
+  legalWatcherSimulate: <TResult = unknown>(payload: {
+    eventType: string;
+    eventDetail?: string;
+    subject: string;
+    ownerName?: string;
+    expiresAtIso: string;
+    policyOrRef?: string;
+    counterpartyName?: string;
+    counterpartyEmail?: string;
+    hasRenewalStarted?: boolean;
+    notes?: string;
+  }) => request<TResult>("/api/operator/agents/legal-watcher/simulate", { method: "POST", body: payload }),
+  hrSimulate: <TResult = unknown>(payload: {
+    eventType: string;
+    role: string;
+    candidateName?: string;
+    candidateEmail?: string;
+    employmentType?: "employee" | "contractor" | "intern" | "part_time" | "seasonal";
+    jurisdiction?: "wa_us" | "bc_ca" | "on_ca" | "or_us" | "other";
+    employerEntity?: "pascal_logistics" | "client";
+    effectiveDateIso?: string;
+    requestDetail: string;
+    compensationBand?: string;
+    priorContext?: string;
+  }) => request<TResult>("/api/operator/agents/hr/simulate", { method: "POST", body: payload }),
   agentTasks: <TResult = unknown>(days?: number, status?: string) => {
     const params: string[] = [];
     if (days) params.push(`days=${days}`);

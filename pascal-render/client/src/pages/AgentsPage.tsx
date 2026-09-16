@@ -9,7 +9,7 @@
 // ============================================================================
 
 import { useEffect, useState } from "react";
-import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone, CalendarClock, GitBranch, ArrowRight, Play, ClipboardList } from "lucide-react";
+import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone, CalendarClock, GitBranch, ArrowRight, Play, ClipboardList, Scale, UserPlus } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api, ApiError } from "../config/api";
 
@@ -122,7 +122,7 @@ const PRIORITY_CLASS: Record<DraftOutputBase["priority"], string> = {
   low: "bg-sky-50 text-sky-700 border-sky-200",
 };
 
-type SimTab = "chief" | "booking" | "customs" | "vetting" | "claims" | "finance" | "marketing" | "ea";
+type SimTab = "chief" | "booking" | "customs" | "vetting" | "claims" | "finance" | "marketing" | "ea" | "legal" | "hr";
 const SIM_TABS: { key: SimTab; label: string; slot: number; icon: typeof Sparkles }[] = [
   { key: "vetting",   label: "Carrier Vetting", slot: 5, icon: ShieldAlert },
   { key: "booking",   label: "Booking & Dispatch", slot: 6, icon: Truck },
@@ -132,6 +132,8 @@ const SIM_TABS: { key: SimTab; label: string; slot: number; icon: typeof Sparkle
   { key: "ea",        label: "Executive Assistant", slot: 11, icon: CalendarClock },
   { key: "finance",   label: "Finance", slot: 12, icon: DollarSign },
   { key: "marketing", label: "Marketing", slot: 13, icon: Megaphone },
+  { key: "legal",     label: "Legal Watcher", slot: 14, icon: Scale },
+  { key: "hr",        label: "HR", slot: 15, icon: UserPlus },
 ];
 
 function draftContext(d: DraftRow): { label: string; header: string; subject: string } {
@@ -278,6 +280,28 @@ export function AgentsPage() {
   const [eaOnboardingStep, setEaOnboardingStep] = useState("");
   const [eaPriorContext, setEaPriorContext] = useState("Cold email replied to yesterday; roughly 20 loads/mo, no full-time supply-chain person.");
 
+  // Legal Watcher — default fires an insurance renewal 45d out
+  const [lgEventType, setLgEventType] = useState("insurance_renewal");
+  const [lgSubject, setLgSubject] = useState("Auto liability insurance — Northland Regional Express");
+  const [lgExpiresAt, setLgExpiresAt] = useState(new Date(Date.now() + 45 * 86_400_000).toISOString().slice(0, 10));
+  const [lgOwnerName, setLgOwnerName] = useState("Northland Regional Express");
+  const [lgPolicy, setLgPolicy] = useState("POL-2026-882841");
+  const [lgCounterparty, setLgCounterparty] = useState("Northland ops");
+  const [lgCounterpartyEmail, setLgCounterpartyEmail] = useState("dispatch@northlandrx.com");
+  const [lgHasStarted, setLgHasStarted] = useState(false);
+
+  // HR — default drafts an offer letter for a BC coordinator
+  const [hrEventType, setHrEventType] = useState("offer_letter");
+  const [hrRole, setHrRole] = useState("Logistics Coordinator");
+  const [hrCandidateName, setHrCandidateName] = useState("Alex Morgan");
+  const [hrCandidateEmail, setHrCandidateEmail] = useState("alex.morgan@example.com");
+  const [hrEmploymentType, setHrEmploymentType] = useState<"employee" | "contractor" | "intern" | "part_time" | "seasonal">("employee");
+  const [hrJurisdiction, setHrJurisdiction] = useState<"wa_us" | "bc_ca" | "on_ca" | "or_us" | "other">("bc_ca");
+  const [hrEmployerEntity, setHrEmployerEntity] = useState<"pascal_logistics" | "client">("pascal_logistics");
+  const [hrEffective, setHrEffective] = useState("");
+  const [hrRequestDetail, setHrRequestDetail] = useState("Draft an offer letter for a BC-based Logistics Coordinator role, start ASAP, remote-first with quarterly Blaine visits.");
+  const [hrCompBand, setHrCompBand] = useState("");
+
   async function load() {
     setLoading(true);
     setError(undefined);
@@ -421,6 +445,30 @@ export function AgentsPage() {
           meetingWhenIso: eaMeetingWhen || undefined,
           onboardingStep: eaOnboardingStep || undefined,
           priorContext: eaPriorContext || undefined,
+        });
+      } else if (simTab === "legal") {
+        await api.legalWatcherSimulate({
+          eventType: lgEventType,
+          subject: lgSubject,
+          expiresAtIso: lgExpiresAt,
+          ownerName: lgOwnerName || undefined,
+          policyOrRef: lgPolicy || undefined,
+          counterpartyName: lgCounterparty || undefined,
+          counterpartyEmail: lgCounterpartyEmail || undefined,
+          hasRenewalStarted: lgHasStarted,
+        });
+      } else if (simTab === "hr") {
+        await api.hrSimulate({
+          eventType: hrEventType,
+          role: hrRole,
+          candidateName: hrCandidateName || undefined,
+          candidateEmail: hrCandidateEmail || undefined,
+          employmentType: hrEmploymentType,
+          jurisdiction: hrJurisdiction,
+          employerEntity: hrEmployerEntity,
+          effectiveDateIso: hrEffective || undefined,
+          requestDetail: hrRequestDetail,
+          compensationBand: hrCompBand || undefined,
         });
       }
       await load();
@@ -741,6 +789,77 @@ export function AgentsPage() {
                   </div>
                 )}
                 <input value={mkCta} onChange={(e) => setMkCta(e.target.value)} placeholder="Desired CTA" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              </>
+            )}
+            {simTab === "legal" && (
+              <>
+                <select value={lgEventType} onChange={(e) => setLgEventType(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                  <option value="insurance_renewal">Insurance renewal</option>
+                  <option value="poa_renewal">POA renewal (customs)</option>
+                  <option value="usmca_blanket_renewal">USMCA blanket cert renewal</option>
+                  <option value="dg_cert_renewal">DG certification renewal</option>
+                  <option value="customs_bond_renewal">Customs bond renewal</option>
+                  <option value="w9_refresh">Annual W9 refresh</option>
+                  <option value="contract_renewal">Contract renewal (MSA / SOW)</option>
+                  <option value="business_license_renewal">Business license renewal</option>
+                  <option value="retainer_term_end">Retainer term ending</option>
+                  <option value="regulatory_deadline">Regulatory deadline</option>
+                </select>
+                <input value={lgSubject} onChange={(e) => setLgSubject(e.target.value)} placeholder="Subject (what's expiring)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="date" value={lgExpiresAt} onChange={(e) => setLgExpiresAt(e.target.value)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={lgPolicy} onChange={(e) => setLgPolicy(e.target.value)} placeholder="Policy / reference #" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <input value={lgOwnerName} onChange={(e) => setLgOwnerName(e.target.value)} placeholder="Owner (whose obligation is it)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={lgCounterparty} onChange={(e) => setLgCounterparty(e.target.value)} placeholder="Counterparty" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={lgCounterpartyEmail} onChange={(e) => setLgCounterpartyEmail(e.target.value)} placeholder="Counterparty email" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <label className="flex items-center gap-1 text-[11px] text-slate-700"><input type="checkbox" checked={lgHasStarted} onChange={(e) => setLgHasStarted(e.target.checked)} /> Renewal already in motion</label>
+              </>
+            )}
+            {simTab === "hr" && (
+              <>
+                <select value={hrEventType} onChange={(e) => setHrEventType(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                  <option value="offer_letter">Offer letter</option>
+                  <option value="contractor_agreement">Contractor agreement</option>
+                  <option value="onboarding_checklist">Onboarding checklist</option>
+                  <option value="benefits_explainer">Benefits explainer</option>
+                  <option value="policy_response">Policy question response</option>
+                  <option value="performance_note">Performance note</option>
+                  <option value="offboarding_checklist">Offboarding checklist</option>
+                  <option value="reference_request">Reference request</option>
+                </select>
+                <input value={hrRole} onChange={(e) => setHrRole(e.target.value)} placeholder="Role" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={hrCandidateName} onChange={(e) => setHrCandidateName(e.target.value)} placeholder="Candidate name" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={hrCandidateEmail} onChange={(e) => setHrCandidateEmail(e.target.value)} placeholder="Candidate email" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <select value={hrEmploymentType} onChange={(e) => setHrEmploymentType(e.target.value as typeof hrEmploymentType)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                    <option value="employee">Employee</option>
+                    <option value="contractor">Contractor (1099)</option>
+                    <option value="part_time">Part-time</option>
+                    <option value="intern">Intern</option>
+                    <option value="seasonal">Seasonal</option>
+                  </select>
+                  <select value={hrJurisdiction} onChange={(e) => setHrJurisdiction(e.target.value as typeof hrJurisdiction)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                    <option value="wa_us">WA (US)</option>
+                    <option value="bc_ca">BC (Canada)</option>
+                    <option value="or_us">OR (US)</option>
+                    <option value="on_ca">ON (Canada)</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <select value={hrEmployerEntity} onChange={(e) => setHrEmployerEntity(e.target.value as typeof hrEmployerEntity)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                    <option value="pascal_logistics">Pascal Logistics</option>
+                    <option value="client">Client entity</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="date" value={hrEffective} onChange={(e) => setHrEffective(e.target.value)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={hrCompBand} onChange={(e) => setHrCompBand(e.target.value)} placeholder="Compensation band (or leave blank)" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <textarea value={hrRequestDetail} onChange={(e) => setHrRequestDetail(e.target.value)} rows={3} placeholder="Request detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
               </>
             )}
             {simTab === "ea" && (

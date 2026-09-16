@@ -21,6 +21,8 @@ import { categorizeAndDraft as claimsCategorize, persistDraft as claimsPersist, 
 import { categorizeAndDraft as financeCategorize, persistDraft as financePersist, type FinanceEvent } from "../services/agent8Finance.js";
 import { categorizeAndDraft as marketingCategorize, persistDraft as marketingPersist, type MarketingBrief, type MarketingFormat } from "../services/agent9Marketing.js";
 import { categorizeAndDraft as eaCategorize, persistDraft as eaPersist, type EaRequest } from "../services/agent7ExecutiveAssistant.js";
+import { categorizeAndDraft as legalCategorize, persistDraft as legalPersist, type LegalWatchEvent } from "../services/agent10LegalWatcher.js";
+import { categorizeAndDraft as hrCategorize, persistDraft as hrPersist, type HrRequest } from "../services/agent11Hr.js";
 import { listRecentTasks } from "../services/orchestrator.js";
 import { runPlaybook } from "../services/quarterback.js";
 import { listPlaybooks } from "../services/playbooks.js";
@@ -343,6 +345,53 @@ export function createAgentsRouter(): Router {
     };
     const output = await eaCategorize(request);
     const draft = await eaPersist(request, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  router.post("/agents/legal-watcher/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.eventType || !b.subject || !b.expiresAtIso) {
+      return res.status(400).json({ error: "eventType, subject, and expiresAtIso are required." });
+    }
+    const event: LegalWatchEvent = {
+      eventType: String(b.eventType),
+      eventDetail: String(b.eventDetail ?? ""),
+      subject: String(b.subject),
+      ownerOrgId: b.ownerOrgId ? String(b.ownerOrgId) : undefined,
+      ownerName: b.ownerName ? String(b.ownerName) : undefined,
+      expiresAtIso: String(b.expiresAtIso),
+      policyOrRef: b.policyOrRef ? String(b.policyOrRef) : undefined,
+      counterpartyName: b.counterpartyName ? String(b.counterpartyName) : undefined,
+      counterpartyEmail: b.counterpartyEmail ? String(b.counterpartyEmail) : undefined,
+      hasRenewalStarted: b.hasRenewalStarted === true,
+      notes: b.notes ? String(b.notes) : undefined,
+    };
+    const output = await legalCategorize(event);
+    const draft = await legalPersist(event, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  router.post("/agents/hr/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.eventType || !b.role || !b.requestDetail) {
+      return res.status(400).json({ error: "eventType, role, and requestDetail are required." });
+    }
+    const request: HrRequest = {
+      eventType: String(b.eventType),
+      role: String(b.role),
+      candidateName: b.candidateName ? String(b.candidateName) : undefined,
+      candidateEmail: b.candidateEmail ? String(b.candidateEmail) : undefined,
+      employmentType: b.employmentType && ["employee", "contractor", "intern", "part_time", "seasonal"].includes(b.employmentType) ? b.employmentType : undefined,
+      jurisdiction: b.jurisdiction && ["wa_us", "bc_ca", "on_ca", "or_us", "other"].includes(b.jurisdiction) ? b.jurisdiction : undefined,
+      employerEntity: b.employerEntity === "client" ? "client" : "pascal_logistics",
+      clientOrgId: b.clientOrgId ? String(b.clientOrgId) : undefined,
+      effectiveDateIso: b.effectiveDateIso ? String(b.effectiveDateIso) : undefined,
+      requestDetail: String(b.requestDetail),
+      compensationBand: b.compensationBand ? String(b.compensationBand) : undefined,
+      priorContext: b.priorContext ? String(b.priorContext) : undefined,
+    };
+    const output = await hrCategorize(request);
+    const draft = await hrPersist(request, output, `simulated:${Date.now()}`);
     return res.status(201).json({ draft, output });
   });
 

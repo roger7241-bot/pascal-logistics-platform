@@ -1313,3 +1313,25 @@ CREATE TABLE IF NOT EXISTS erp_connections (
 
 CREATE INDEX IF NOT EXISTS idx_erp_connections_org ON erp_connections (org_id);
 CREATE INDEX IF NOT EXISTS idx_erp_connections_status ON erp_connections (connection_status);
+
+-- Promote Legal Watcher (Agent 14, key agent10_legal_watcher) and HR &
+-- Onboarding (Agent 15, key agent11_hr) to active. All 15 agents are now
+-- live on day 1. Legal Watcher covers insurance / POA / USMCA / DG cert /
+-- customs bond / W9 / contract / license / retainer term / regulatory
+-- deadlines with per-category lead-time bands. HR covers offer letters,
+-- contractor agreements, onboarding + offboarding, benefits, policy
+-- questions, performance notes, reference requests — jurisdiction-aware
+-- (WA / BC default), never quotes binding comp without Roger.
+UPDATE agent_registry
+   SET status = 'active',
+       description = 'Watches every time-boxed obligation Pascal or its clients hold — insurance, POA, USMCA blanket, DG cert, customs bond, W9, contracts, business license, retainer term, regulatory deadlines. Drafts renewal reminders at the right lead time.',
+       updated_at = now()
+ WHERE agent_key = 'agent10_legal_watcher'
+   AND status <> 'active';
+
+UPDATE agent_registry
+   SET status = 'active',
+       description = 'Offer letters, contractor agreements, onboarding + offboarding checklists, benefits explainers, policy responses, performance notes. Jurisdiction-aware (WA + BC default). Flags anything needing employment counsel review; never quotes binding comp numbers without Roger.',
+       updated_at = now()
+ WHERE agent_key = 'agent11_hr'
+   AND status <> 'active';
