@@ -305,6 +305,10 @@ export const api = {
     request<TResult>("/api/public/landed-cost/estimate", { method: "POST", body: input }),
   publicLandedCostSaveLead: <TResult = unknown>(payload: { email: string; contactName?: string; companyName?: string; input: Record<string, unknown> }) =>
     request<TResult>("/api/public/landed-cost/save-lead", { method: "POST", body: payload }),
+  invitePreview: <TResult = unknown>(token: string) =>
+    request<TResult>(`/api/public/invites/${encodeURIComponent(token)}`),
+  inviteAccept: <TResult = unknown>(token: string, payload: { password: string; displayName?: string }) =>
+    request<TResult>(`/api/public/invites/${encodeURIComponent(token)}/accept`, { method: "POST", body: payload }),
   landedCostEstimate: <TResult = unknown>(scope: "operator" | "client", input: Record<string, unknown>) =>
     request<TResult>(`/api/${scope}/landed-cost/estimate`, { method: "POST", body: input }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>

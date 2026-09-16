@@ -124,7 +124,12 @@ export function ClientDocumentsPage() {
 
         {/* Upload form */}
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="mb-2 text-sm font-bold text-slate-900">Upload a document</p>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-bold text-slate-900">Upload a document</p>
+            <a href="/client-portal/documents/generate" className="text-[11px] font-medium text-cyan-700 hover:underline">
+              Or generate a BOL / Commercial Invoice / USMCA Cert →
+            </a>
+          </div>
           <div className="grid gap-2 md:grid-cols-3">
             <input id="doc-file-input" type="file" onChange={(e) => setFile(e.target.files?.[0] ?? undefined)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
             <select value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs">

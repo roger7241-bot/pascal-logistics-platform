@@ -25,6 +25,8 @@ import { OperatorProspectsPage } from "./pages/OperatorProspectsPage";
 import { ClientTeamPage } from "./pages/ClientTeamPage";
 import { PublicLandedCostPage } from "./pages/PublicLandedCostPage";
 import { ClientQuotePage } from "./pages/ClientQuotePage";
+import { AcceptInvitePage } from "./pages/AcceptInvitePage";
+import { ClientDocumentGeneratorPage } from "./pages/ClientDocumentGeneratorPage";
 import { CallActivityPage } from "./pages/CallActivityPage";
 import { RapidDispatchDesk } from "./pages/RapidDispatchDesk";
 import { MagicUploadPage } from "./pages/MagicUploadPage";
@@ -44,6 +46,7 @@ export default function App() {
           <Route path="/track" element={<PublicCargoTrackerPage />} />
           <Route path="/track/:shipmentId" element={<PublicCargoTrackerPage />} />
           <Route path="/quote" element={<PublicLandedCostPage />} />
+          <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
           {/* Operator-only */}
           <Route path="/" element={<RequireAuth role="operator"><CeoHubPage /></RequireAuth>} />
@@ -77,6 +80,7 @@ export default function App() {
           <Route path="/operator/prospects" element={<RequireAuth role="operator"><OperatorProspectsPage /></RequireAuth>} />
           <Route path="/client-portal/team" element={<RequireAuth><ClientTeamPage /></RequireAuth>} />
           <Route path="/client-portal/quote" element={<RequireAuth><ClientQuotePage /></RequireAuth>} />
+          <Route path="/client-portal/documents/generate" element={<RequireAuth><ClientDocumentGeneratorPage /></RequireAuth>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
