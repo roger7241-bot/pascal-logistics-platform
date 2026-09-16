@@ -28,6 +28,7 @@
 import { pool } from "../db/pool.js";
 import { notifyRoger } from "./rogerNotify.js";
 import { createSmsToken } from "./smsTokens.js";
+import { isDelegationActive, reviewItem as elenaReview, persistVerdict as elenaPersist } from "./agent18OpsElena.js";
 
 export interface TrailEntry {
   agentKey: string;
@@ -100,14 +101,44 @@ export async function createTask(args: CreateTaskArgs): Promise<string> {
   );
   const taskId = result.rows[0].id as string;
   if (args.humanGateReason) {
-    // Fire-and-forget — never let a notification delay task creation.
+    // If Elena delegation is active, she reviews first. Otherwise straight
+    // to Roger via SMS token. Fire-and-forget so task creation isn't blocked.
     void (async () => {
       try {
-        const token = await createSmsToken("task", taskId);
-        await notifyRoger({
-          subject: `[Gated] ${args.subject}`,
-          message: `${args.humanGateReason}\n\nReply YES ${token.shortCode} to approve or NO ${token.shortCode} to reject. Or open the AI Agents board.`,
-        });
+        const delegated = await isDelegationActive();
+        if (delegated) {
+          const verdict = await elenaReview({
+            reviewSubject: args.subject,
+            itemType: "task",
+            itemId: taskId,
+            agentAuthor: args.originAgentKey,
+            category: args.taskType,
+            priority: "normal",
+            content: args.humanGateReason ?? "",
+            clientOrgId: args.clientOrgId,
+          });
+          await elenaPersist({
+            reviewSubject: args.subject, itemType: "task", itemId: taskId,
+            agentAuthor: args.originAgentKey, category: args.taskType,
+            priority: "normal", content: args.humanGateReason ?? "",
+            clientOrgId: args.clientOrgId,
+          }, verdict);
+          // Only bother Roger when Elena escalates.
+          if (verdict.verdict === "escalate_to_roger") {
+            const token = await createSmsToken("task", taskId);
+            const brief = verdict.escalationBriefing;
+            const briefText = brief
+              ? `${brief.whatOccurred}\n\nElena's rec: ${brief.recommendation}\n\nReply YES ${token.shortCode} to approve or NO ${token.shortCode} to reject.`
+              : `${args.humanGateReason}\n\nReply YES ${token.shortCode} or NO ${token.shortCode}.`;
+            await notifyRoger({ subject: `[Elena → Roger] ${args.subject}`, message: briefText });
+          }
+        } else {
+          const token = await createSmsToken("task", taskId);
+          await notifyRoger({
+            subject: `[Gated] ${args.subject}`,
+            message: `${args.humanGateReason}\n\nReply YES ${token.shortCode} to approve or NO ${token.shortCode} to reject.`,
+          });
+        }
       } catch (err) {
         console.error("Gate notification failed:", err);
       }
@@ -151,13 +182,35 @@ export async function advanceTask(args: AdvanceTaskArgs): Promise<void> {
   if (args.humanGateReason) {
     void (async () => {
       try {
-        const t = await pool.query(`SELECT subject FROM agent_tasks WHERE id = $1`, [args.taskId]);
+        const t = await pool.query(`SELECT subject, client_org_id, task_type FROM agent_tasks WHERE id = $1`, [args.taskId]);
         const subject = t.rows[0]?.subject ?? "task";
-        const token = await createSmsToken("task", args.taskId);
-        await notifyRoger({
-          subject: `[Gated] ${subject}`,
-          message: `${args.humanGateReason}\n\nReply YES ${token.shortCode} to approve or NO ${token.shortCode} to reject. Or open the AI Agents board.`,
-        });
+        const clientOrgId = t.rows[0]?.client_org_id ?? undefined;
+        const taskType = t.rows[0]?.task_type ?? "task";
+        const delegated = await isDelegationActive();
+        if (delegated) {
+          const reviewInput = {
+            reviewSubject: subject, itemType: "task" as const, itemId: args.taskId,
+            agentAuthor: args.fromAgentKey, category: String(taskType),
+            priority: "normal", content: args.humanGateReason ?? "",
+            clientOrgId,
+          };
+          const verdict = await elenaReview(reviewInput);
+          await elenaPersist(reviewInput, verdict);
+          if (verdict.verdict === "escalate_to_roger") {
+            const token = await createSmsToken("task", args.taskId);
+            const brief = verdict.escalationBriefing;
+            const briefText = brief
+              ? `${brief.whatOccurred}\n\nElena's rec: ${brief.recommendation}\n\nReply YES ${token.shortCode} or NO ${token.shortCode}.`
+              : `${args.humanGateReason}\n\nReply YES ${token.shortCode} or NO ${token.shortCode}.`;
+            await notifyRoger({ subject: `[Elena → Roger] ${subject}`, message: briefText });
+          }
+        } else {
+          const token = await createSmsToken("task", args.taskId);
+          await notifyRoger({
+            subject: `[Gated] ${subject}`,
+            message: `${args.humanGateReason}\n\nReply YES ${token.shortCode} to approve or NO ${token.shortCode} to reject.`,
+          });
+        }
       } catch (err) {
         console.error("Gate notification failed:", err);
       }

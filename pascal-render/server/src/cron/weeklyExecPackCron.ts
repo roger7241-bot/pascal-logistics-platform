@@ -18,6 +18,7 @@ import { pool } from "../db/pool.js";
 import { PASCAL_SYSTEM_PREFIX } from "../services/pascalContext.js";
 import { listRecentSnapshots, getKpiTargets } from "../services/kpiCompute.js";
 import { getKnowledgeBase, renderKnowledgeBaseForPrompt } from "../services/clientKnowledgeBase.js";
+import { categorizeAndDraft as frankCategorize, persistDraft as frankPersist } from "../services/agent17ScmFrank.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const client = apiKey ? new Anthropic({ apiKey }) : undefined;
@@ -71,6 +72,29 @@ async function main() {
 Raw counts this week: ${latest.orders_total} total orders, ${latest.orders_shipped_ontime} on-time, ${latest.orders_shipped_infull} in-full. Freight $${Math.round(Number(latest.freight_cost_usd ?? 0)).toLocaleString()}, revenue $${Math.round(Number(latest.revenue_usd ?? 0)).toLocaleString()}, inventory value $${Math.round(Number(latest.inventory_value_usd ?? 0)).toLocaleString()}.
 
 Data source: ${latest.source} (${latest.source === "demo" ? "DEMO MODE — no live ERP yet" : "live ERP pull"}).`;
+
+    // Frank authors Tier 3 exec packs — he's the executive voice for that tier.
+    // Route through Frank, then fall through to Chief-of-Staff path for anything
+    // else that lands here (shouldn't given the SQL filter, but stays defensive).
+    try {
+      const frankOutput = await frankCategorize({
+        eventType: "weekly_exec_pack",
+        clientOrgId: c.org_id,
+        clientName: c.company_name,
+        isTier3: true,
+        scenarioDetail: kpiBoard,
+        requestedDeliverable: `Weekly Executive Pack for ${c.company_name}`,
+      });
+      await frankPersist({
+        eventType: "weekly_exec_pack", clientOrgId: c.org_id, clientName: c.company_name,
+        isTier3: true, scenarioDetail: kpiBoard, requestedDeliverable: `Weekly Executive Pack for ${c.company_name}`,
+      }, frankOutput, `weekly_exec_pack:${c.org_id}:${new Date().toISOString().slice(0, 10)}`);
+      drafted += 1;
+      console.log(`Weekly exec pack authored by Frank for ${c.company_name}.`);
+      continue;
+    } catch (err) {
+      console.error(`Frank exec-pack failed for ${c.company_name}, falling back to Chief of Staff path:`, err);
+    }
 
     let body = "";
     if (client) {

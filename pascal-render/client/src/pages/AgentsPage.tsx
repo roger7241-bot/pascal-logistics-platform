@@ -9,7 +9,7 @@
 // ============================================================================
 
 import { useEffect, useState } from "react";
-import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone, CalendarClock, GitBranch, ArrowRight, Play, ClipboardList, Scale, UserPlus } from "lucide-react";
+import { Cpu, Bot, CheckCircle2, XCircle, Inbox, Loader2, Send, Edit3, Archive, MessageSquarePlus, Sparkles, AlertCircle, Truck, ShieldCheck, ShieldAlert, PackageX, DollarSign, Megaphone, CalendarClock, GitBranch, ArrowRight, Play, ClipboardList, Scale, UserPlus, Handshake, Briefcase, Command } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api, ApiError } from "../config/api";
 
@@ -122,7 +122,7 @@ const PRIORITY_CLASS: Record<DraftOutputBase["priority"], string> = {
   low: "bg-sky-50 text-sky-700 border-sky-200",
 };
 
-type SimTab = "chief" | "booking" | "customs" | "vetting" | "claims" | "finance" | "marketing" | "ea" | "legal" | "hr";
+type SimTab = "chief" | "booking" | "customs" | "vetting" | "claims" | "finance" | "marketing" | "ea" | "legal" | "hr" | "marcus" | "frank" | "elena";
 const SIM_TABS: { key: SimTab; label: string; slot: number; icon: typeof Sparkles }[] = [
   { key: "vetting",   label: "Carrier Vetting", slot: 5, icon: ShieldAlert },
   { key: "booking",   label: "Booking & Dispatch", slot: 6, icon: Truck },
@@ -134,6 +134,9 @@ const SIM_TABS: { key: SimTab; label: string; slot: number; icon: typeof Sparkle
   { key: "marketing", label: "Marketing", slot: 13, icon: Megaphone },
   { key: "legal",     label: "Legal Watcher", slot: 14, icon: Scale },
   { key: "hr",        label: "HR", slot: 15, icon: UserPlus },
+  { key: "marcus",    label: "Marcus (Sales)", slot: 16, icon: Handshake },
+  { key: "frank",     label: "Frank (VP SC)", slot: 17, icon: Briefcase },
+  { key: "elena",     label: "Elena (Ops Deputy)", slot: 18, icon: Command },
 ];
 
 function draftContext(d: DraftRow): { label: string; header: string; subject: string } {
@@ -304,20 +307,55 @@ export function AgentsPage() {
   const [hrRequestDetail, setHrRequestDetail] = useState("Draft an offer letter for a BC-based Logistics Coordinator role, start ASAP, remote-first with quarterly Blaine visits.");
   const [hrCompBand, setHrCompBand] = useState("");
 
+  // Marcus (Sales)
+  const [mcEventType, setMcEventType] = useState("discovery_reply");
+  const [mcProspectName, setMcProspectName] = useState("Sarah Chen");
+  const [mcProspectCompany, setMcProspectCompany] = useState("Acme Industrial Parts");
+  const [mcProspectRole, setMcProspectRole] = useState("Ops Manager");
+  const [mcInboundReply, setMcInboundReply] = useState("Thanks for reaching out — we already use ABC Logistics for our brokerage. Curious what would be different with you.");
+  const [mcRequestDetail, setMcRequestDetail] = useState("Prospect replied to cold email with a mild objection.");
+  const [mcMonthlyLoads, setMcMonthlyLoads] = useState("35");
+  const [mcCurrent3pl, setMcCurrent3pl] = useState("ABC Logistics");
+
+  // Frank (Tier 3 SCM)
+  const [fkEventType, setFkEventType] = useState("carrier_dispute_rebuttal");
+  const [fkClientName, setFkClientName] = useState("Meridian Cold Chain");
+  const [fkScenarioDetail, setFkScenarioDetail] = useState("Carrier billing $1,200 detention + layover on PL-2405-018 held at Pacific Highway/Blaine because commercial invoice had wrong tariff code. Free time was 2 hours; carrier claims 5 hours dwell.");
+  const [fkDispute, setFkDispute] = useState("1200");
+  const [fkCarrier, setFkCarrier] = useState("SAIA");
+  const [fkCrossing, setFkCrossing] = useState("Pacific Highway / Blaine");
+  const [fkRequestedDeliverable, setFkRequestedDeliverable] = useState("Rebuttal letter to carrier + upstream fix");
+
+  // Elena (Ops deputy)
+  const [elReviewSubject, setElReviewSubject] = useState("Draft: USMCA cert missing on PL-2405-018");
+  const [elItemType, setElItemType] = useState<"draft" | "task">("draft");
+  const [elAgentAuthor, setElAgentAuthor] = useState("agent13_customs_liaison");
+  const [elCategory, setElCategory] = useState("missing_doc");
+  const [elPriority, setElPriority] = useState("normal");
+  const [elContent, setElContent] = useState("Hi Meridian team — pre-entry audit flagged missing USMCA cert on your shipment PL-2405-018. Without it, entry files at MFN duty rate. Please forward or confirm goods are not USMCA-qualifying.\n\n— Roger, Pascal Logistics");
+  const [elDollarExposure, setElDollarExposure] = useState("350");
+  const [elClientName, setElClientName] = useState("Meridian Cold Chain");
+  const [elClientTier, setElClientTier] = useState("Tier 2");
+  const [elResult, setElResult] = useState<{ verdict: string; reasoning: string; escalationBriefing?: { whatOccurred: string; immediateActionTaken: string; currentStatus: string; nextMilestone: string; dollarImpactUsd?: number; threeChoices: string[]; recommendation: string } } | undefined>();
+  const [delegationOn, setDelegationOn] = useState(false);
+  const [delegationLoading, setDelegationLoading] = useState(false);
+
   async function load() {
     setLoading(true);
     setError(undefined);
     try {
-      const [a, d, t, pb] = await Promise.all([
+      const [a, d, t, pb, del] = await Promise.all([
         api.agents<{ agents: AgentRow[] }>(),
         api.agentDrafts<{ drafts: DraftRow[] }>("pending"),
         api.agentTasks<{ tasks: AgentTaskRow[] }>(3).catch(() => ({ tasks: [] })),
         api.playbooks<{ playbooks: PlaybookRow[] }>().catch(() => ({ playbooks: [] })),
+        api.getDelegation<{ delegationActive: boolean }>().catch(() => ({ delegationActive: false })),
       ]);
       setAgents(a.agents);
       setDrafts(d.drafts);
       setTasks(t.tasks);
       setPlaybooks(pb.playbooks);
+      setDelegationOn(del.delegationActive);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load agents.");
     } finally {
@@ -472,6 +510,42 @@ export function AgentsPage() {
           requestDetail: hrRequestDetail,
           compensationBand: hrCompBand || undefined,
         });
+      } else if (simTab === "marcus") {
+        await api.marcusSimulate({
+          eventType: mcEventType,
+          prospectName: mcProspectName || undefined,
+          prospectCompany: mcProspectCompany || undefined,
+          prospectRole: mcProspectRole || undefined,
+          inboundReplyText: mcInboundReply || undefined,
+          requestDetail: mcRequestDetail,
+          monthlyLoadEstimate: mcMonthlyLoads ? Number(mcMonthlyLoads) : undefined,
+          currentBrokerOr3pl: mcCurrent3pl || undefined,
+        });
+      } else if (simTab === "frank") {
+        await api.frankSimulate({
+          eventType: fkEventType,
+          clientName: fkClientName,
+          isTier3: true,
+          scenarioDetail: fkScenarioDetail,
+          disputeAmountUsd: fkDispute ? Number(fkDispute) : undefined,
+          carrierName: fkCarrier || undefined,
+          crossingPoint: fkCrossing || undefined,
+          requestedDeliverable: fkRequestedDeliverable || undefined,
+        });
+      } else if (simTab === "elena") {
+        const r = await api.elenaSimulate<{ verdict: typeof elResult }>({
+          reviewSubject: elReviewSubject,
+          itemType: elItemType,
+          itemId: "simulated",
+          agentAuthor: elAgentAuthor,
+          category: elCategory,
+          priority: elPriority,
+          content: elContent,
+          dollarExposureUsd: elDollarExposure ? Number(elDollarExposure) : undefined,
+          clientName: elClientName || undefined,
+          clientRetainerTier: elClientTier || undefined,
+        });
+        setElResult(r.verdict);
       }
       await load();
     } catch (err) {
@@ -493,7 +567,28 @@ export function AgentsPage() {
               {agents.filter((a) => a.status === "active").length} active · {agents.filter((a) => a.status === "planned").length} planned
             </span>
           </div>
-          <button onClick={load} className="text-xs font-medium text-slate-500 hover:text-slate-700">Refresh</button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={async () => {
+                setDelegationLoading(true);
+                try {
+                  const r = await api.setDelegation<{ delegationActive: boolean }>(!delegationOn);
+                  setDelegationOn(r.delegationActive);
+                } catch (err) {
+                  setError(err instanceof ApiError ? err.message : "Delegation toggle failed.");
+                } finally {
+                  setDelegationLoading(false);
+                }
+              }}
+              disabled={delegationLoading}
+              className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${delegationOn ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-300 bg-white text-slate-700"}`}
+              title={delegationOn ? "Elena is reviewing gated items first" : "Roger reviews every gate directly"}
+            >
+              <Command size={12} />
+              {delegationOn ? "Elena delegated: ON" : "Elena delegated: OFF"}
+            </button>
+            <button onClick={load} className="text-xs font-medium text-slate-500 hover:text-slate-700">Refresh</button>
+          </div>
         </div>
 
         {error && (
@@ -808,6 +903,89 @@ export function AgentsPage() {
                   </div>
                 )}
                 <input value={mkCta} onChange={(e) => setMkCta(e.target.value)} placeholder="Desired CTA" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              </>
+            )}
+            {simTab === "marcus" && (
+              <>
+                <select value={mcEventType} onChange={(e) => setMcEventType(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                  <option value="discovery_reply">Prospect replied — run discovery</option>
+                  <option value="objection_handling">Handle a specific objection</option>
+                  <option value="roi_estimate">Rough ROI / freight-leakage estimate</option>
+                  <option value="call_prep">Prep me for the intro call (internal)</option>
+                  <option value="nurture_touch">Gentle nurture — went dark</option>
+                  <option value="proposal_draft">Pre-proposal memo</option>
+                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={mcProspectName} onChange={(e) => setMcProspectName(e.target.value)} placeholder="Prospect name" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={mcProspectRole} onChange={(e) => setMcProspectRole(e.target.value)} placeholder="Prospect role" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={mcProspectCompany} onChange={(e) => setMcProspectCompany(e.target.value)} placeholder="Company" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={mcMonthlyLoads} onChange={(e) => setMcMonthlyLoads(e.target.value)} placeholder="Est. monthly loads" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <input value={mcCurrent3pl} onChange={(e) => setMcCurrent3pl(e.target.value)} placeholder="Current 3PL / broker (if known)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <textarea value={mcInboundReply} onChange={(e) => setMcInboundReply(e.target.value)} rows={3} placeholder="What they said (paste their reply)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <input value={mcRequestDetail} onChange={(e) => setMcRequestDetail(e.target.value)} placeholder="Detail / context" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              </>
+            )}
+            {simTab === "frank" && (
+              <>
+                <select value={fkEventType} onChange={(e) => setFkEventType(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                  <option value="weekly_exec_pack">Weekly exec pack for a Tier 3 client</option>
+                  <option value="carrier_dispute_rebuttal">Carrier dispute rebuttal ($1k+)</option>
+                  <option value="sop_playbook">SOP playbook (S&OP cadence, etc.)</option>
+                  <option value="root_cause_memo">Root-cause memo for an incident</option>
+                  <option value="sop_routing_guide">Vendor inbound routing guide</option>
+                  <option value="strategic_advisory">Strategic advisory (open question)</option>
+                  <option value="landed_cost_interpretation">Executive read on landed-cost result</option>
+                </select>
+                <input value={fkClientName} onChange={(e) => setFkClientName(e.target.value)} placeholder="Client name (Tier 3)" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <div className="grid grid-cols-3 gap-2">
+                  <input value={fkDispute} onChange={(e) => setFkDispute(e.target.value)} placeholder="Dollar exposure ($)" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={fkCarrier} onChange={(e) => setFkCarrier(e.target.value)} placeholder="Carrier (if applicable)" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={fkCrossing} onChange={(e) => setFkCrossing(e.target.value)} placeholder="Crossing point" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <input value={fkRequestedDeliverable} onChange={(e) => setFkRequestedDeliverable(e.target.value)} placeholder="Requested deliverable" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                <textarea value={fkScenarioDetail} onChange={(e) => setFkScenarioDetail(e.target.value)} rows={4} placeholder="Scenario detail" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+              </>
+            )}
+            {simTab === "elena" && (
+              <>
+                <p className="text-[11px] text-slate-600">Elena reviews an item and returns her verdict: auto-approve within tolerance, escalate to Roger, reject, or hold for info. Simulate an item she'd see.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={elReviewSubject} onChange={(e) => setElReviewSubject(e.target.value)} placeholder="Review subject" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <select value={elItemType} onChange={(e) => setElItemType(e.target.value as typeof elItemType)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                    <option value="draft">Draft</option>
+                    <option value="task">Task</option>
+                  </select>
+                  <input value={elAgentAuthor} onChange={(e) => setElAgentAuthor(e.target.value)} placeholder="Agent author (agent_key)" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={elCategory} onChange={(e) => setElCategory(e.target.value)} placeholder="Category" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <select value={elPriority} onChange={(e) => setElPriority(e.target.value)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+                    <option value="urgent">Urgent</option>
+                    <option value="normal">Normal</option>
+                    <option value="low">Low</option>
+                  </select>
+                  <input value={elDollarExposure} onChange={(e) => setElDollarExposure(e.target.value)} placeholder="Dollar exposure ($)" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={elClientName} onChange={(e) => setElClientName(e.target.value)} placeholder="Client name" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                  <input value={elClientTier} onChange={(e) => setElClientTier(e.target.value)} placeholder="Client tier" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                </div>
+                <textarea value={elContent} onChange={(e) => setElContent(e.target.value)} rows={4} placeholder="Draft / gate content Elena is reviewing" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+                {elResult && (
+                  <div className={`rounded-md border p-3 text-xs ${elResult.verdict === "auto_approve" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : elResult.verdict === "escalate_to_roger" ? "border-amber-200 bg-amber-50 text-amber-900" : elResult.verdict === "reject" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-slate-200 bg-slate-50 text-slate-800"}`}>
+                    <p className="mb-1 text-[10px] font-mono uppercase tracking-wide">Verdict: {elResult.verdict.replace(/_/g, " ")}</p>
+                    <p className="italic">{elResult.reasoning}</p>
+                    {elResult.escalationBriefing && (
+                      <div className="mt-2 space-y-1 text-[11px]">
+                        <p><span className="font-semibold">WHAT:</span> {elResult.escalationBriefing.whatOccurred}</p>
+                        <p><span className="font-semibold">ACTION TAKEN:</span> {elResult.escalationBriefing.immediateActionTaken}</p>
+                        <p><span className="font-semibold">STATUS:</span> {elResult.escalationBriefing.currentStatus}</p>
+                        <p><span className="font-semibold">NEXT:</span> {elResult.escalationBriefing.nextMilestone}</p>
+                        {elResult.escalationBriefing.dollarImpactUsd !== undefined && <p><span className="font-semibold">$:</span> ${elResult.escalationBriefing.dollarImpactUsd.toLocaleString()}</p>}
+                        <p className="font-semibold">Three choices:</p>
+                        <ul className="list-disc list-inside">{elResult.escalationBriefing.threeChoices.map((c, i) => <li key={i}>{c}</li>)}</ul>
+                        <p><span className="font-semibold">RECOMMENDATION:</span> {elResult.escalationBriefing.recommendation}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
             {simTab === "legal" && (

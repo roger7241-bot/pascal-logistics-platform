@@ -1519,3 +1519,35 @@ CREATE TABLE IF NOT EXISTS google_calendar_integrations (
   last_used_at TIMESTAMPTZ,
   UNIQUE (user_id, google_email)
 );
+
+-- ============================================================================
+-- THREE NEW PERSONA AGENTS
+--   16 Marcus Vance      — Sales Consultant (middle-of-funnel)
+--   17 Frank Reynolds    — Fractional VP of Supply Chain (Tier 3 anchor)
+--   18 Elena Rostova     — Director of Operations (Roger's second-in-command)
+-- Seed as active. Human-in-the-loop remains TRUE for all three — nothing
+-- outbound goes without Roger's (or Elena's, when delegation is on) sign-off.
+-- ============================================================================
+INSERT INTO agent_registry (agent_key, agent_number, name, role, description, status, human_in_loop) VALUES
+  ('agent16_sales_marcus',   16, 'Marcus Vance — Sales Consultant',   'Client-facing',
+    'Middle-of-funnel sales conversation. Runs discovery on prospect replies, drafts objection responses in dock-level operator language, produces freight-leakage ROI estimates, nurtures the middle of the pipeline between Marketing outbound and EA scheduling.',
+    'active', TRUE),
+  ('agent17_scm_frank',      17, 'Frank Reynolds — Fractional VP Supply Chain', 'Client-facing',
+    'Executive voice for Tier 3 clients. Authors weekly exec packs, S&OP structures, carrier-dispute rebuttal letters ($1k+), vendor routing guides, and root-cause analyses. Fires on strategic + financial questions where operator-level agents are the wrong altitude.',
+    'active', TRUE),
+  ('agent18_ops_elena',      18, 'Elena Rostova — Director of Operations', 'Back-office',
+    'Roger''s operational second-in-command. Pre-reviews the human-in-the-loop queues, resolves within tolerance ($500 / routine patterns), escalates only what needs Roger. Cross-agent supervisor: catches downstream failures before they cascade.',
+    'active', TRUE)
+ON CONFLICT (agent_key) DO NOTHING;
+
+-- Elena delegation setting — global (Roger-level). When 'elena_active',
+-- gate notifications route through Elena first; she escalates to Roger on
+-- her tolerance rules. Default is FALSE (Roger receives directly).
+CREATE TABLE IF NOT EXISTS operator_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO operator_settings (key, value)
+  VALUES ('delegation', '{"enabled": false, "delegate_agent_key": "agent18_ops_elena"}'::jsonb)
+  ON CONFLICT (key) DO NOTHING;

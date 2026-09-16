@@ -311,6 +311,16 @@ export const api = {
     request<TResult>(`/api/public/invites/${encodeURIComponent(token)}/accept`, { method: "POST", body: payload }),
   landedCostEstimate: <TResult = unknown>(scope: "operator" | "client", input: Record<string, unknown>) =>
     request<TResult>(`/api/${scope}/landed-cost/estimate`, { method: "POST", body: input }),
+  // New persona agents (Marcus / Frank / Elena)
+  marcusSimulate: <TResult = unknown>(payload: Record<string, unknown>) =>
+    request<TResult>("/api/operator/agents/marcus/simulate", { method: "POST", body: payload }),
+  frankSimulate: <TResult = unknown>(payload: Record<string, unknown>) =>
+    request<TResult>("/api/operator/agents/frank/simulate", { method: "POST", body: payload }),
+  elenaSimulate: <TResult = unknown>(payload: Record<string, unknown>) =>
+    request<TResult>("/api/operator/agents/elena/simulate", { method: "POST", body: payload }),
+  getDelegation: <TResult = unknown>() => request<TResult>("/api/operator/settings/delegation"),
+  setDelegation: <TResult = unknown>(enabled: boolean) =>
+    request<TResult>("/api/operator/settings/delegation", { method: "PUT", body: { enabled } }),
   updateBookingRequest: <TResult = unknown>(id: string, status: "accepted" | "declined" | "expired", operatorNotes?: string) =>
     request<TResult>(`/api/operator/booking-requests/${id}`, { method: "PATCH", body: { status, operatorNotes } }),
   clientShipmentSearch: <TResult = unknown>(query: string, type?: string) =>

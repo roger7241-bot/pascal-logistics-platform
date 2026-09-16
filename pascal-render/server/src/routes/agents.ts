@@ -23,6 +23,9 @@ import { categorizeAndDraft as marketingCategorize, persistDraft as marketingPer
 import { categorizeAndDraft as eaCategorize, persistDraft as eaPersist, type EaRequest } from "../services/agent7ExecutiveAssistant.js";
 import { categorizeAndDraft as legalCategorize, persistDraft as legalPersist, type LegalWatchEvent } from "../services/agent10LegalWatcher.js";
 import { categorizeAndDraft as hrCategorize, persistDraft as hrPersist, type HrRequest } from "../services/agent11Hr.js";
+import { categorizeAndDraft as marcusCategorize, persistDraft as marcusPersist, type MarcusInput } from "../services/agent16SalesMarcus.js";
+import { categorizeAndDraft as frankCategorize, persistDraft as frankPersist, type FrankInput } from "../services/agent17ScmFrank.js";
+import { reviewItem as elenaReview, persistVerdict as elenaPersist, isDelegationActive, setDelegation, type ElenaReviewInput } from "../services/agent18OpsElena.js";
 import { listRecentTasks } from "../services/orchestrator.js";
 import { dispatchDraft } from "../services/draftDispatch.js";
 import { runPlaybook, continueTask } from "../services/quarterback.js";
@@ -434,6 +437,88 @@ export function createAgentsRouter(): Router {
     const output = await hrCategorize(request);
     const draft = await hrPersist(request, output, `simulated:${Date.now()}`);
     return res.status(201).json({ draft, output });
+  });
+
+  // Marcus — sales conversation
+  router.post("/agents/marcus/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.eventType || !b.requestDetail) return res.status(400).json({ error: "eventType and requestDetail required." });
+    const input: MarcusInput = {
+      eventType: String(b.eventType),
+      prospectId: b.prospectId ? String(b.prospectId) : undefined,
+      prospectName: b.prospectName ? String(b.prospectName) : undefined,
+      prospectCompany: b.prospectCompany ? String(b.prospectCompany) : undefined,
+      prospectRole: b.prospectRole ? String(b.prospectRole) : undefined,
+      prospectEmail: b.prospectEmail ? String(b.prospectEmail) : undefined,
+      monthlyLoadEstimate: typeof b.monthlyLoadEstimate === "number" ? b.monthlyLoadEstimate : undefined,
+      currentBrokerOr3pl: b.currentBrokerOr3pl ? String(b.currentBrokerOr3pl) : undefined,
+      painSignal: b.painSignal ? String(b.painSignal) : undefined,
+      inboundReplyText: b.inboundReplyText ? String(b.inboundReplyText) : undefined,
+      objectionRaised: b.objectionRaised ? String(b.objectionRaised) : undefined,
+      requestDetail: String(b.requestDetail),
+      priorContext: b.priorContext ? String(b.priorContext) : undefined,
+    };
+    const output = await marcusCategorize(input);
+    const draft = await marcusPersist(input, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  // Frank — Tier 3 executive advisory
+  router.post("/agents/frank/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.eventType || !b.scenarioDetail) return res.status(400).json({ error: "eventType and scenarioDetail required." });
+    const input: FrankInput = {
+      eventType: String(b.eventType),
+      clientOrgId: b.clientOrgId ? String(b.clientOrgId) : undefined,
+      clientName: b.clientName ? String(b.clientName) : undefined,
+      isTier3: b.isTier3 !== false,
+      scenarioDetail: String(b.scenarioDetail),
+      disputeAmountUsd: typeof b.disputeAmountUsd === "number" ? b.disputeAmountUsd : undefined,
+      carrierName: b.carrierName ? String(b.carrierName) : undefined,
+      crossingPoint: b.crossingPoint ? String(b.crossingPoint) : undefined,
+      hsCodesInvolved: Array.isArray(b.hsCodesInvolved) ? b.hsCodesInvolved.map(String) : undefined,
+      priorContext: b.priorContext ? String(b.priorContext) : undefined,
+      requestedDeliverable: b.requestedDeliverable ? String(b.requestedDeliverable) : undefined,
+    };
+    const output = await frankCategorize(input);
+    const draft = await frankPersist(input, output, `simulated:${Date.now()}`);
+    return res.status(201).json({ draft, output });
+  });
+
+  // Elena — ops deputy review
+  router.post("/agents/elena/simulate", async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    if (!b.reviewSubject || !b.itemType || !b.content) return res.status(400).json({ error: "reviewSubject, itemType, content required." });
+    const input: ElenaReviewInput = {
+      reviewSubject: String(b.reviewSubject),
+      itemType: b.itemType === "task" ? "task" : "draft",
+      itemId: String(b.itemId ?? "simulated"),
+      agentAuthor: String(b.agentAuthor ?? "unknown"),
+      category: String(b.category ?? "operational"),
+      priority: String(b.priority ?? "normal"),
+      content: String(b.content),
+      dollarExposureUsd: typeof b.dollarExposureUsd === "number" ? b.dollarExposureUsd : undefined,
+      recipientRole: b.recipientRole ? String(b.recipientRole) : undefined,
+      clientOrgId: b.clientOrgId ? String(b.clientOrgId) : undefined,
+      clientName: b.clientName ? String(b.clientName) : undefined,
+      clientRetainerTier: b.clientRetainerTier ? String(b.clientRetainerTier) : undefined,
+    };
+    const output = await elenaReview(input);
+    // Only persist a real audit trail when itemId is real; simulate calls
+    // pass "simulated" and we skip persistence to avoid orphan trail rows.
+    if (input.itemId !== "simulated") await elenaPersist(input, output);
+    return res.status(201).json({ verdict: output });
+  });
+
+  // Delegation toggle — Roger enables/disables Elena's authority
+  router.get("/settings/delegation", async (_req: Request, res: Response) => {
+    const active = await isDelegationActive();
+    return res.status(200).json({ delegationActive: active });
+  });
+  router.put("/settings/delegation", async (req: Request, res: Response) => {
+    const enabled = req.body?.enabled === true;
+    await setDelegation(enabled);
+    return res.status(200).json({ delegationActive: enabled });
   });
 
   return router;
