@@ -47,7 +47,7 @@ function normalizeNetSuite(raw: Record<string, unknown>): NormalizedErpEvent {
     occurredAtIso: String(raw.eventDate ?? raw.dateCreated ?? new Date().toISOString()),
     entity: {
       poNumber: raw.tranId ?? raw.tranNumber,
-      supplier: raw.entity?.text ?? raw.vendor,
+      supplier: (raw.entity as { text?: unknown } | undefined)?.text ?? raw.vendor,
       totalUsd: typeof raw.total === "number" ? raw.total : undefined,
     },
     raw,

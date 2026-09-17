@@ -202,7 +202,7 @@ export function createProspectsRouter(): Router {
 // credentials. Currently returns demo/simulated responses so the UI works
 // end-to-end pre-credentials.
 // ============================================================================
-export function createCalendarRouter(): Router {
+export function createGoogleCalendarRouter(): Router {
   const router = Router();
 
   router.get("/calendar/integration-status", async (req: Request, res: Response) => {
