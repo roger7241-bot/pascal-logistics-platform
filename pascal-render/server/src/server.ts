@@ -31,6 +31,7 @@ import { createPublicLandedCostRouter, createAuthedLandedCostRouter } from "./ro
 import { createInviteAcceptRouter } from "./routes/publicInvites.js";
 import { createDocGenRouter } from "./routes/documentGeneration.js";
 import { createUtilityAgentRouter, createErpWebhookRouter } from "./routes/utilityAgents.js";
+import { createClientDayOneRouter } from "./routes/clientDayOne.js";
 import { createBillingRouter } from "./routes/billing.js";
 import { createLeadsRouter } from "./routes/leads.js";
 import { createVaultRouter } from "./routes/vault.js";
@@ -164,6 +165,8 @@ app.use("/api/client", createAuthedLandedCostRouter());
 app.use("/api/operator", createDocGenRouter("operator"));
 app.use("/api/client", createDocGenRouter("client"));
 app.use("/api/operator", createUtilityAgentRouter());
+app.use("/api/operator", createClientDayOneRouter("operator"));
+app.use("/api/client", createClientDayOneRouter("client"));
 app.use("/api/operator", createBillingRouter());
 app.use("/api/operator", createLeadsRouter());
 app.use("/api/operator", createVaultRouter());

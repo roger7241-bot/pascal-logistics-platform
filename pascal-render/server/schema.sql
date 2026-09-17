@@ -1648,3 +1648,85 @@ ALTER TABLE tracking_subscriptions ADD CONSTRAINT tracking_subscriptions_provide
 ALTER TABLE shipment_milestones DROP CONSTRAINT IF EXISTS shipment_milestones_source_check;
 ALTER TABLE shipment_milestones ADD CONSTRAINT shipment_milestones_source_check
   CHECK (source IN ('demo', 'terminal49_webhook', 'terminal49_pull', 'cargoai_webhook', 'cargoai_pull', 'macropoint_webhook', 'macropoint_pull', 'manual', 'unknown_webhook'));
+
+-- ============================================================================
+-- CLIENT'S BROKERS OF RECORD — separate from carriers. Each client can have
+-- one US broker and one CA broker (customs brokers, not freight brokers).
+-- POA is the pinch point — this is where the warehouse person needs to see
+-- current status at a glance.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS broker_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id TEXT NOT NULL REFERENCES accounts (org_id) ON DELETE CASCADE,
+  broker_name TEXT NOT NULL,
+  side TEXT NOT NULL CHECK (side IN ('us', 'ca', 'both')),
+  contact_name TEXT,
+  contact_phone TEXT,
+  contact_email TEXT,
+  ace_filer_code TEXT,                     -- US ACE filer code
+  cbsa_client_id TEXT,                     -- CBSA client identifier
+  poa_status TEXT NOT NULL DEFAULT 'not_on_file' CHECK (poa_status IN ('not_on_file', 'requested', 'signed', 'expired', 'on_file')),
+  poa_signed_at DATE,
+  poa_expires_at DATE,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (org_id, broker_name, side)
+);
+CREATE INDEX IF NOT EXISTS idx_broker_accounts_org ON broker_accounts (org_id, side);
+CREATE INDEX IF NOT EXISTS idx_broker_accounts_poa_expiring ON broker_accounts (poa_expires_at) WHERE poa_expires_at IS NOT NULL AND poa_status = 'on_file';
+
+-- ============================================================================
+-- HTS / HS classification reference — curated commercial-chapter entries
+-- with US MFN + USMCA-preferential + CA MFN + CA-USMCA rates. This is a
+-- warehouse-friendly lookup, not a customs advisory tool — the compliance
+-- rail says every real classification decision goes to the broker of record.
+-- Populated with the 40 highest-volume 6-digit subheadings for cross-border
+-- SMB shippers on the Blaine / Sumas corridor.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS hts_reference (
+  hs_code TEXT PRIMARY KEY,                -- 2/4/6/10 digit; store the canonical length we support
+  chapter TEXT NOT NULL,
+  short_description TEXT NOT NULL,
+  full_description TEXT,
+  us_mfn_rate_pct NUMERIC(6,3),
+  us_usmca_rate_pct NUMERIC(6,3),
+  ca_mfn_rate_pct NUMERIC(6,3),
+  ca_usmca_rate_pct NUMERIC(6,3),
+  us_section_232 BOOLEAN NOT NULL DEFAULT FALSE,
+  us_section_301 BOOLEAN NOT NULL DEFAULT FALSE,
+  add_cvd_flag BOOLEAN NOT NULL DEFAULT FALSE,
+  common_synonyms TEXT[],                  -- alternate names shippers use ("widget", "bracket", etc.)
+  notes TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_hts_reference_chapter ON hts_reference (chapter);
+CREATE INDEX IF NOT EXISTS idx_hts_reference_prefix ON hts_reference (LEFT(hs_code, 4));
+CREATE INDEX IF NOT EXISTS idx_hts_reference_synonyms ON hts_reference USING gin (common_synonyms);
+
+-- Seed a starter reference set — the classifications SMB shippers actually ship.
+-- (These are best-effort general-purpose rates for the lookup; the broker of
+-- record confirms binding classification and duty on every entry.)
+INSERT INTO hts_reference (hs_code, chapter, short_description, us_mfn_rate_pct, us_usmca_rate_pct, ca_mfn_rate_pct, ca_usmca_rate_pct, us_section_232, common_synonyms, notes) VALUES
+  ('7326.90', '73', 'Iron or steel articles — other',                       2.9, 0.0, 6.5, 0.0, TRUE,  ARRAY['steel article','iron bracket','fabricated steel'], 'Section 232 may apply on steel-derivative articles.'),
+  ('7308.90', '73', 'Structures of iron or steel',                            0.0, 0.0, 6.5, 0.0, TRUE,  ARRAY['steel structure','frame','bracket assembly'], 'Section 232 possible.'),
+  ('8471.30', '84', 'Portable computers ≤ 10kg (laptops)',                    0.0, 0.0, 0.0, 0.0, FALSE, ARRAY['laptop','notebook computer'], NULL),
+  ('8471.41', '84', 'Data-processing machines with CPU+I/O in same housing',  0.0, 0.0, 0.0, 0.0, FALSE, ARRAY['desktop pc','all-in-one'], NULL),
+  ('8443.31', '84', 'Multifunction printers/scanners/copiers',                0.0, 0.0, 0.0, 0.0, FALSE, ARRAY['printer','copier','mfp'], NULL),
+  ('8481.80', '84', 'Taps, cocks, valves — other',                            2.0, 0.0, 0.0, 0.0, FALSE, ARRAY['valve','tap','cock'], NULL),
+  ('8483.30', '84', 'Bearing housings and plain shaft bearings',              4.5, 0.0, 6.5, 0.0, FALSE, ARRAY['bearing housing','shaft bearing'], NULL),
+  ('8501.32', '85', 'DC motors 750W-75kW',                                    2.4, 0.0, 6.0, 0.0, FALSE, ARRAY['dc motor','electric motor'], NULL),
+  ('8504.40', '85', 'Static converters (rectifiers, inverters, UPS)',         1.5, 0.0, 0.0, 0.0, FALSE, ARRAY['inverter','ups','rectifier','power supply'], NULL),
+  ('8517.62', '85', 'Machines for reception/transmission of data (routers)',  0.0, 0.0, 0.0, 0.0, FALSE, ARRAY['router','switch','network gear'], NULL),
+  ('8536.90', '85', 'Electrical apparatus for switching — other',             2.7, 0.0, 6.0, 0.0, FALSE, ARRAY['electrical connector','terminal block'], NULL),
+  ('8544.42', '85', 'Electric conductors with connectors ≤ 1000V (cables)',   2.6, 0.0, 5.5, 0.0, FALSE, ARRAY['cable assembly','wire harness'], NULL),
+  ('8708.29', '87', 'Parts and accessories of motor vehicle bodies',          2.5, 0.0, 6.0, 0.0, FALSE, ARRAY['auto body part','vehicle trim'], NULL),
+  ('9403.10', '94', 'Metal furniture for offices',                            0.0, 0.0, 8.0, 0.0, FALSE, ARRAY['office furniture','filing cabinet','metal desk'], NULL),
+  ('9403.20', '94', 'Metal furniture — other',                                0.0, 0.0, 8.0, 0.0, FALSE, ARRAY['metal shelf','metal rack','storage furniture'], NULL),
+  ('9403.60', '94', 'Wooden furniture — other',                               0.0, 0.0, 9.5, 0.0, FALSE, ARRAY['wood furniture','wooden cabinet'], NULL),
+  ('3923.30', '39', 'Bottles, flasks — plastic',                              3.0, 0.0, 5.0, 0.0, FALSE, ARRAY['plastic bottle','plastic flask'], NULL),
+  ('3923.90', '39', 'Plastic articles for conveyance/packing — other',        3.0, 0.0, 5.0, 0.0, FALSE, ARRAY['plastic container','plastic packaging'], NULL),
+  ('4009.31', '40', 'Rubber hose, not reinforced, with fittings',             2.5, 0.0, 6.5, 0.0, FALSE, ARRAY['rubber hose','hose assembly'], NULL),
+  ('4016.99', '40', 'Rubber articles — other',                                2.5, 0.0, 6.5, 0.0, FALSE, ARRAY['rubber part','rubber component'], NULL),
+  ('4412.31', '44', 'Plywood, ≤ 6mm outer ply of tropical wood',              8.0, 0.0, 3.5, 0.0, FALSE, ARRAY['plywood','tropical plywood'], NULL),
+ON CONFLICT (hs_code) DO NOTHING;

@@ -311,6 +311,16 @@ export const api = {
     request<TResult>(`/api/public/invites/${encodeURIComponent(token)}/accept`, { method: "POST", body: payload }),
   landedCostEstimate: <TResult = unknown>(scope: "operator" | "client", input: Record<string, unknown>) =>
     request<TResult>(`/api/${scope}/landed-cost/estimate`, { method: "POST", body: input }),
+  htsLookup: <TResult = unknown>(scope: "operator" | "client", query: string) =>
+    request<TResult>(`/api/${scope}/hts/lookup?q=${encodeURIComponent(query)}`),
+  htsGet: <TResult = unknown>(scope: "operator" | "client", hsCode: string) =>
+    request<TResult>(`/api/${scope}/hts/${encodeURIComponent(hsCode)}`),
+  htsDutyPreview: <TResult = unknown>(scope: "operator" | "client", payload: { hsCode: string; declaredValueUsd: number; importSide: "US" | "CA"; useUsmca: boolean }) =>
+    request<TResult>(`/api/${scope}/hts/duty-preview`, { method: "POST", body: payload }),
+  counterparties: <TResult = unknown>(scope: "operator" | "client", previewOrgId?: string) =>
+    request<TResult>(`/api/${scope}/counterparties${scope === "operator" && previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`),
+  upsertBroker: <TResult = unknown>(orgId: string, payload: Record<string, unknown>) =>
+    request<TResult>(`/api/operator/accounts/${encodeURIComponent(orgId)}/brokers`, { method: "POST", body: payload }),
   // New persona agents (Marcus / Frank / Elena)
   marcusSimulate: <TResult = unknown>(payload: Record<string, unknown>) =>
     request<TResult>("/api/operator/agents/marcus/simulate", { method: "POST", body: payload }),

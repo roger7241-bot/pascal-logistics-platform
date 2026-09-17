@@ -172,8 +172,8 @@ export function ClientTrackingPage() {
       <main className="mx-auto max-w-[1400px] space-y-4 p-6">
         <div className="flex items-center gap-2">
           <MapPin size={18} className="text-slate-700" />
-          <h1 className="text-xl font-bold">Ocean & Air Tracking</h1>
-          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">Live milestones</span>
+          <h1 className="text-xl font-bold">Shipment Tracking</h1>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">LTL · TL · Ocean · Air · Rail</span>
         </div>
 
         {error && (

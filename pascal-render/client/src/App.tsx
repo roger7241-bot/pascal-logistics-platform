@@ -27,6 +27,8 @@ import { PublicLandedCostPage } from "./pages/PublicLandedCostPage";
 import { ClientQuotePage } from "./pages/ClientQuotePage";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 import { ClientDocumentGeneratorPage } from "./pages/ClientDocumentGeneratorPage";
+import { ClientHtsLookupPage } from "./pages/ClientHtsLookupPage";
+import { ClientCounterpartiesPage } from "./pages/ClientCounterpartiesPage";
 import { CallActivityPage } from "./pages/CallActivityPage";
 import { RapidDispatchDesk } from "./pages/RapidDispatchDesk";
 import { MagicUploadPage } from "./pages/MagicUploadPage";
@@ -81,6 +83,8 @@ export default function App() {
           <Route path="/client-portal/team" element={<RequireAuth><ClientTeamPage /></RequireAuth>} />
           <Route path="/client-portal/quote" element={<RequireAuth><ClientQuotePage /></RequireAuth>} />
           <Route path="/client-portal/documents/generate" element={<RequireAuth><ClientDocumentGeneratorPage /></RequireAuth>} />
+          <Route path="/client-portal/hts" element={<RequireAuth><ClientHtsLookupPage /></RequireAuth>} />
+          <Route path="/client-portal/counterparties" element={<RequireAuth><ClientCounterpartiesPage /></RequireAuth>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
