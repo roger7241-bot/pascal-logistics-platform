@@ -241,7 +241,7 @@ export const api = {
   clientTier3Dashboard: <TResult = unknown>(previewOrgId?: string) =>
     request<TResult>(`/api/client/tier3-dashboard${previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`),
   // Tracking (ocean + air) — same shape on operator + client sides
-  trackingSubscriptions: <TResult = unknown>(scope: "operator" | "client", mode?: "ocean" | "air", previewOrgId?: string) => {
+  trackingSubscriptions: <TResult = unknown>(scope: "operator" | "client", mode?: "ocean" | "air" | "ltl" | "tl" | "rail", previewOrgId?: string) => {
     const params: string[] = [];
     if (mode) params.push(`mode=${mode}`);
     if (scope === "operator" && previewOrgId) params.push(`orgId=${encodeURIComponent(previewOrgId)}`);
@@ -249,7 +249,7 @@ export const api = {
   },
   trackingSubscription: <TResult = unknown>(scope: "operator" | "client", id: string) =>
     request<TResult>(`/api/${scope}/tracking/subscriptions/${id}`),
-  trackingSubscribe: <TResult = unknown>(scope: "operator" | "client", payload: { mode: "ocean" | "air"; trackingNumber: string; carrierScacOrIata?: string; billOfLading?: string; bookingNumber?: string; reference?: string; origin?: string; destination?: string; demoMode?: boolean }, previewOrgId?: string) =>
+  trackingSubscribe: <TResult = unknown>(scope: "operator" | "client", payload: { mode: "ocean" | "air" | "ltl" | "tl" | "rail"; trackingNumber: string; carrierScacOrIata?: string; billOfLading?: string; bookingNumber?: string; reference?: string; origin?: string; destination?: string; demoMode?: boolean }, previewOrgId?: string) =>
     request<TResult>(`/api/${scope}/tracking/subscribe${scope === "operator" && previewOrgId ? `?orgId=${encodeURIComponent(previewOrgId)}` : ""}`, { method: "POST", body: payload }),
   trackingRefresh: <TResult = unknown>(scope: "operator" | "client", id: string) =>
     request<TResult>(`/api/${scope}/tracking/subscriptions/${id}/refresh`, { method: "POST", body: {} }),
