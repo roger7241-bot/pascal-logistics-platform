@@ -7,7 +7,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useState } from "react";
-import { Inbox, Loader2, AlertCircle, FileText, MapPin, Bot, GitBranch, AlertTriangle, ChevronRight, ExternalLink } from "lucide-react";
+import { Inbox, Loader2, AlertCircle, FileText, MapPin, Bot, GitBranch, AlertTriangle, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api, ApiError } from "../config/api";

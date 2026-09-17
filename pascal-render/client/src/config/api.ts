@@ -25,7 +25,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
 }
@@ -298,7 +298,7 @@ export const api = {
   updateProspect: <TResult = unknown>(id: string, payload: Record<string, unknown>) =>
     request<TResult>(`/api/operator/prospects/${id}`, { method: "PATCH", body: payload }),
   calendarStatus: <TResult = unknown>() => request<TResult>("/api/operator/calendar/integration-status"),
-  createCalendarEvent: <TResult = unknown>(payload: { title: string; description?: string; startIso: string; endIso: string; attendees?: string[] }) =>
+  createGoogleCalendarEvent: <TResult = unknown>(payload: { title: string; description?: string; startIso: string; endIso: string; attendees?: string[] }) =>
     request<TResult>("/api/operator/calendar/create-event", { method: "POST", body: payload }),
   // Landed cost — three flavors: public (no auth), client, operator
   publicLandedCostEstimate: <TResult = unknown>(input: Record<string, unknown>) =>

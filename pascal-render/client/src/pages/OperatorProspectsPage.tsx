@@ -6,7 +6,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useState } from "react";
-import { Megaphone, Plus, Loader2, AlertCircle, X, ChevronDown } from "lucide-react";
+import { Megaphone, Plus, Loader2, AlertCircle, X } from "lucide-react";
 import { OperatorHeader } from "../components/OperatorHeader";
 import { api, ApiError } from "../config/api";
 
