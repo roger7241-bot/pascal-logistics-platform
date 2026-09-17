@@ -26,7 +26,18 @@ export function createWebhooksRouter(): Router {
   // Inbound email → Chief of Staff triage → draft in review queue.
   // Normalizes the several shapes upstream providers can send.
   router.post("/webhooks/inbound-email", async (req: Request, res: Response) => {
-    const b = req.body ?? {};
+    const raw = req.body ?? {};
+
+    // AgentMail wraps the payload as { type: "event", event_type, message: {...} }.
+    // Postmark/SES/generic providers send fields at the top level. Unwrap when needed.
+    const b: Record<string, unknown> = (
+      raw && typeof raw === "object"
+      && (raw as { type?: unknown }).type === "event"
+      && (raw as { message?: unknown }).message
+      && typeof (raw as { message?: unknown }).message === "object"
+    )
+      ? (raw as { message: Record<string, unknown> }).message
+      : (raw as Record<string, unknown>);
 
     // AgentMail native shape
     let fromEmail = typeof b.from_email === "string" ? b.from_email
