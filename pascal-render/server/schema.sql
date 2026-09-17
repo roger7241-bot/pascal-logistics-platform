@@ -1628,3 +1628,23 @@ CREATE TABLE IF NOT EXISTS erp_ingestion_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_erp_events_org_status ON erp_ingestion_events (org_id, processing_status, received_at DESC);
+
+-- ============================================================================
+-- LAND-FREIGHT TRACKING — LTL / TL / Rail intermodal
+-- Extend tracking_subscriptions to cover the modes that are the bulk of
+-- SMB freight. Same schema shape as ocean + air; carrier-facing adapter
+-- lives alongside the existing ones.
+-- ============================================================================
+ALTER TABLE tracking_subscriptions DROP CONSTRAINT IF EXISTS tracking_subscriptions_mode_check;
+ALTER TABLE tracking_subscriptions ADD CONSTRAINT tracking_subscriptions_mode_check
+  CHECK (mode IN ('ocean', 'air', 'ltl', 'tl', 'rail'));
+
+ALTER TABLE tracking_subscriptions DROP CONSTRAINT IF EXISTS tracking_subscriptions_provider_check;
+ALTER TABLE tracking_subscriptions ADD CONSTRAINT tracking_subscriptions_provider_check
+  CHECK (provider IN ('terminal49', 'cargoai', 'macropoint', 'project44', 'fourkites', 'carrier_direct', 'demo'));
+
+-- Extend shipment_milestones.source check constraint to include MacroPoint
+-- (LTL/TL/rail) source labels.
+ALTER TABLE shipment_milestones DROP CONSTRAINT IF EXISTS shipment_milestones_source_check;
+ALTER TABLE shipment_milestones ADD CONSTRAINT shipment_milestones_source_check
+  CHECK (source IN ('demo', 'terminal49_webhook', 'terminal49_pull', 'cargoai_webhook', 'cargoai_pull', 'macropoint_webhook', 'macropoint_pull', 'manual', 'unknown_webhook'));

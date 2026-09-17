@@ -7,11 +7,11 @@
 // ============================================================================
 
 import { useCallback, useEffect, useState } from "react";
-import { Ship, Plane, Plus, Loader2, RefreshCw, MapPin, AlertTriangle, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { Ship, Plane, Plus, Loader2, RefreshCw, MapPin, AlertTriangle, AlertCircle, CheckCircle2, Clock, Truck, Train } from "lucide-react";
 import { AppHeader } from "../components/AppHeader";
 import { api, ApiError } from "../config/api";
 
-type Mode = "ocean" | "air";
+type Mode = "ocean" | "air" | "ltl" | "tl" | "rail";
 
 interface Subscription {
   id: string;
@@ -51,6 +51,11 @@ const EVENT_LABEL: Record<string, string> = {
   gate_in: "Gated in",
   loaded: "Loaded",
   sailed: "Departed",
+  picked_up: "Picked up",
+  at_origin_terminal: "At origin terminal",
+  linehaul: "Linehaul",
+  at_destination_terminal: "At destination terminal",
+  out_for_delivery: "Out for delivery",
   in_transit: "In transit",
   arrived: "Arrived",
   discharged: "Discharged",
@@ -62,6 +67,10 @@ const EVENT_LABEL: Record<string, string> = {
   hold: "Hold",
   rolled: "Rolled",
   released: "Released",
+};
+
+const MODE_ICON: Record<Mode, typeof Ship> = {
+  ocean: Ship, air: Plane, ltl: Truck, tl: Truck, rail: Train,
 };
 
 function eventIcon(evt: string, isException: boolean) {
@@ -178,10 +187,13 @@ export function ClientTrackingPage() {
           <p className="mb-2 text-sm font-bold text-slate-900">Add a container or air waybill</p>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
             <select value={mode} onChange={(e) => setMode(e.target.value as Mode)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+              <option value="ltl">LTL (Less-than-truckload)</option>
+              <option value="tl">Truckload (TL)</option>
               <option value="ocean">Ocean container</option>
               <option value="air">Air waybill</option>
+              <option value="rail">Intermodal rail</option>
             </select>
-            <input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder={mode === "ocean" ? "Container # (e.g. MSCU7123456)" : "AWB # (e.g. 020-12345678)"} className="col-span-2 rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
+            <input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder={mode === "ocean" ? "Container # (e.g. MSCU7123456)" : mode === "air" ? "AWB # (e.g. 020-12345678)" : mode === "ltl" ? "PRO # (e.g. 123456789)" : mode === "tl" ? "Load # / BOL" : "Rail waybill / Container #"} className="col-span-2 rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
             <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Your PO / ref" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
             <input value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder="Origin (optional)" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
             <input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Destination (optional)" className="rounded-md border border-slate-300 px-3 py-1.5 text-xs" />
@@ -207,10 +219,12 @@ export function ClientTrackingPage() {
               <p className="p-4 text-center text-xs text-slate-500">No shipments yet — add a container or AWB above to start tracking.</p>
             ) : (
               <div className="divide-y divide-slate-100">
-                {subs.map((s) => (
+                {subs.map((s) => {
+                  const Icon = MODE_ICON[s.mode as Mode] ?? Truck;
+                  return (
                   <button key={s.id} onClick={() => loadDetail(s.id)} className={`w-full px-4 py-3 text-left hover:bg-slate-50 ${detail?.subscription.id === s.id ? "bg-cyan-50" : ""}`}>
                     <div className="flex items-center gap-2 mb-1">
-                      {s.mode === "ocean" ? <Ship size={12} className="text-slate-500" /> : <Plane size={12} className="text-slate-500" />}
+                      <Icon size={12} className="text-slate-500" />
                       <span className="text-xs font-semibold text-slate-900">{s.tracking_number}</span>
                       {s.demo_mode && <span className="rounded-md border border-violet-200 bg-violet-50 px-1 text-[9px] font-mono uppercase text-violet-800">demo</span>}
                     </div>
@@ -219,7 +233,8 @@ export function ClientTrackingPage() {
                       <p className="text-[11px] text-slate-500">{s.origin} → {s.destination}</p>
                     )}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
@@ -228,7 +243,10 @@ export function ClientTrackingPage() {
           <section className="lg:col-span-2 rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
               <div className="flex items-center gap-2">
-                {detail?.subscription.mode === "ocean" ? <Ship size={14} /> : detail?.subscription.mode === "air" ? <Plane size={14} /> : null}
+                {detail && (() => {
+                  const Icon = MODE_ICON[detail.subscription.mode as Mode] ?? Truck;
+                  return <Icon size={14} />;
+                })()}
                 <p className="text-sm font-bold text-slate-900">{detail ? detail.subscription.tracking_number : "Timeline"}</p>
                 {detail && <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-slate-500">{detail.subscription.provider}</span>}
               </div>

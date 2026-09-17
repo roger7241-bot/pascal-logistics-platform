@@ -108,6 +108,119 @@ export function generateAirMilestones(trackingNumber: string, origin?: string, d
   return milestones;
 }
 
+// Land freight — LTL cross-dock pattern with two terminal touches.
+const LTL_ORIGINS = [
+  { name: "Blaine, WA", lat: 48.99, lon: -122.75 },
+  { name: "Seattle, WA", lat: 47.61, lon: -122.33 },
+  { name: "Portland, OR", lat: 45.51, lon: -122.68 },
+  { name: "Surrey, BC", lat: 49.19, lon: -122.85 },
+];
+const LTL_DESTS = [
+  { name: "Toronto, ON", lat: 43.65, lon: -79.38 },
+  { name: "Chicago, IL", lat: 41.88, lon: -87.63 },
+  { name: "Los Angeles, CA", lat: 34.05, lon: -118.24 },
+  { name: "Dallas, TX", lat: 32.78, lon: -96.80 },
+];
+const LTL_TERMINALS = [
+  "Seattle Cross-Dock", "Portland Cross-Dock", "Kent Hub", "Sumner Hub",
+  "Chicago Consolidation", "Kansas City Hub", "Denver Hub",
+];
+
+export function generateLtlMilestones(trackingNumber: string, origin?: string, destination?: string): TrackingMilestone[] {
+  const rng = seed(`ltl:${trackingNumber}`);
+  const o = origin ? { name: origin, lat: 48.99, lon: -122.75 } : LTL_ORIGINS[Math.floor(rng() * LTL_ORIGINS.length)];
+  const d = destination ? { name: destination, lat: 43.65, lon: -79.38 } : LTL_DESTS[Math.floor(rng() * LTL_DESTS.length)];
+  const originTerm = LTL_TERMINALS[Math.floor(rng() * 4)];
+  const destTerm = LTL_TERMINALS[4 + Math.floor(rng() * 3)];
+  const start = Date.now() - (4 + Math.floor(rng() * 3)) * 86_400_000;
+  const iso = (offsetHours: number) => new Date(start + offsetHours * 3_600_000).toISOString();
+
+  const milestones: TrackingMilestone[] = [
+    { eventType: "booking_confirmed", eventCode: "BKG", location: o.name, latitude: o.lat, longitude: o.lon, occurredAtIso: iso(0), isException: false },
+    { eventType: "picked_up", eventCode: "PU", location: o.name, latitude: o.lat, longitude: o.lon, occurredAtIso: iso(6), isException: false },
+    { eventType: "at_origin_terminal", eventCode: "OTL", location: originTerm, occurredAtIso: iso(9), isException: false, details: { terminal: originTerm } },
+  ];
+
+  const hasReweigh = rng() < 0.25;
+  if (hasReweigh) {
+    milestones.push({ eventType: "exception", eventCode: "RWG", location: originTerm, occurredAtIso: iso(11), isException: true, details: { reason: "Reweigh — actual weight differs from BOL by 8%" } });
+  }
+
+  milestones.push({ eventType: "linehaul", eventCode: "LH", occurredAtIso: iso(14), isException: false, details: { note: "Departed origin terminal, linehaul in progress" } });
+  milestones.push({ eventType: "at_destination_terminal", eventCode: "DTL", location: destTerm, occurredAtIso: iso(48), isException: false, details: { terminal: destTerm } });
+
+  const dockCongestion = rng() < 0.15;
+  if (dockCongestion) {
+    milestones.push({ eventType: "hold", eventCode: "DKC", location: destTerm, occurredAtIso: iso(50), isException: true, details: { reason: "Dock congestion — 24h delay expected" } });
+  }
+
+  milestones.push({ eventType: "out_for_delivery", eventCode: "OFD", location: d.name, latitude: d.lat, longitude: d.lon, occurredAtIso: iso(dockCongestion ? 74 : 55), isException: false });
+  milestones.push({ eventType: "delivered", eventCode: "DEL", location: d.name, latitude: d.lat, longitude: d.lon, occurredAtIso: iso(dockCongestion ? 76 : 58), isException: false });
+
+  return milestones;
+}
+
+// Truckload — direct dispatch, pickup, checkpoints, delivery.
+export function generateTlMilestones(trackingNumber: string, origin?: string, destination?: string): TrackingMilestone[] {
+  const rng = seed(`tl:${trackingNumber}`);
+  const o = origin ? { name: origin, lat: 48.99, lon: -122.75 } : LTL_ORIGINS[Math.floor(rng() * LTL_ORIGINS.length)];
+  const d = destination ? { name: destination, lat: 43.65, lon: -79.38 } : LTL_DESTS[Math.floor(rng() * LTL_DESTS.length)];
+  const start = Date.now() - (3 + Math.floor(rng() * 3)) * 86_400_000;
+  const iso = (offsetHours: number) => new Date(start + offsetHours * 3_600_000).toISOString();
+
+  const milestones: TrackingMilestone[] = [
+    { eventType: "booking_confirmed", eventCode: "TND", location: o.name, latitude: o.lat, longitude: o.lon, occurredAtIso: iso(0), isException: false, details: { note: "Tender accepted by carrier" } },
+    { eventType: "picked_up", eventCode: "PU", location: o.name, latitude: o.lat, longitude: o.lon, occurredAtIso: iso(4), isException: false },
+  ];
+
+  const latePickup = rng() < 0.15;
+  if (latePickup) {
+    milestones.push({ eventType: "exception", eventCode: "LP", location: o.name, occurredAtIso: iso(6), isException: true, details: { reason: "Late pickup — 2 hrs past appointment window" } });
+  }
+
+  // Mid-transit checkpoints via ELD / MacroPoint
+  milestones.push({ eventType: "in_transit", eventCode: "CHK", occurredAtIso: iso(12), isException: false, details: { note: "Enroute — ELD checkpoint" } });
+  milestones.push({ eventType: "in_transit", eventCode: "CHK", occurredAtIso: iso(24), isException: false, details: { note: "Overnight rest — driver HOS reset" } });
+
+  const breakdown = rng() < 0.08;
+  if (breakdown) {
+    milestones.push({ eventType: "exception", eventCode: "BRK", occurredAtIso: iso(30), isException: true, details: { reason: "Mechanical breakdown — recovery unit dispatched, ETA push 8 hrs" } });
+  }
+
+  milestones.push({ eventType: "in_transit", eventCode: "CHK", occurredAtIso: iso(breakdown ? 42 : 36), isException: false, details: { note: "Approaching destination" } });
+  milestones.push({ eventType: "arrived", eventCode: "ARR", location: d.name, latitude: d.lat, longitude: d.lon, occurredAtIso: iso(breakdown ? 48 : 40), isException: false });
+  milestones.push({ eventType: "delivered", eventCode: "POD", location: d.name, latitude: d.lat, longitude: d.lon, occurredAtIso: iso(breakdown ? 50 : 42), isException: false });
+
+  return milestones;
+}
+
+// Intermodal rail — ramp / linehaul / ramp pattern.
+export function generateRailMilestones(trackingNumber: string, origin?: string, destination?: string): TrackingMilestone[] {
+  const rng = seed(`rail:${trackingNumber}`);
+  const o = origin ? { name: origin, lat: 47.61, lon: -122.33 } : { name: "Seattle Ramp (BNSF)", lat: 47.61, lon: -122.33 };
+  const d = destination ? { name: destination, lat: 41.88, lon: -87.63 } : { name: "Chicago Ramp (BNSF)", lat: 41.88, lon: -87.63 };
+  const start = Date.now() - (6 + Math.floor(rng() * 3)) * 86_400_000;
+  const iso = (offsetHours: number) => new Date(start + offsetHours * 3_600_000).toISOString();
+
+  return [
+    { eventType: "booking_confirmed", eventCode: "BKG", location: o.name, latitude: o.lat, longitude: o.lon, occurredAtIso: iso(0), isException: false },
+    { eventType: "picked_up", eventCode: "DRY", location: o.name, latitude: o.lat, longitude: o.lon, occurredAtIso: iso(8), isException: false, details: { note: "Origin drayage — container to ramp" } },
+    { eventType: "at_origin_terminal", eventCode: "RGI", location: o.name, latitude: o.lat, longitude: o.lon, occurredAtIso: iso(12), isException: false },
+    { eventType: "loaded", eventCode: "RLD", location: o.name, latitude: o.lat, longitude: o.lon, occurredAtIso: iso(24), isException: false, details: { note: "Loaded on rail car" } },
+    { eventType: "linehaul", eventCode: "RTL", occurredAtIso: iso(30), isException: false, details: { note: "Train departed origin ramp" } },
+    { eventType: "in_transit", eventCode: "CHK", occurredAtIso: iso(72), isException: false, details: { note: "Mid-linehaul checkpoint" } },
+    { eventType: "at_destination_terminal", eventCode: "RGO", location: d.name, latitude: d.lat, longitude: d.lon, occurredAtIso: iso(96), isException: false, details: { note: "Arrived destination ramp" } },
+    { eventType: "gated_out", eventCode: "GTO", location: d.name, latitude: d.lat, longitude: d.lon, occurredAtIso: iso(108), isException: false, details: { note: "Destination drayage picked up" } },
+    { eventType: "delivered", eventCode: "POD", location: d.name, latitude: d.lat, longitude: d.lon, occurredAtIso: iso(112), isException: false },
+  ];
+}
+
 export function generateMilestones(mode: TrackingMode, trackingNumber: string, origin?: string, destination?: string): TrackingMilestone[] {
-  return mode === "ocean" ? generateOceanMilestones(trackingNumber, origin, destination) : generateAirMilestones(trackingNumber, origin, destination);
+  switch (mode) {
+    case "ocean": return generateOceanMilestones(trackingNumber, origin, destination);
+    case "air":   return generateAirMilestones(trackingNumber, origin, destination);
+    case "ltl":   return generateLtlMilestones(trackingNumber, origin, destination);
+    case "tl":    return generateTlMilestones(trackingNumber, origin, destination);
+    case "rail":  return generateRailMilestones(trackingNumber, origin, destination);
+  }
 }

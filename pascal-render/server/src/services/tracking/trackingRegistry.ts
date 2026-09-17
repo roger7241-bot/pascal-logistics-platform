@@ -9,14 +9,20 @@ import { pool } from "../../db/pool.js";
 import type { TrackingAdapter, TrackingMode, TrackingProvider, SubscribeRequest, TrackingMilestone } from "./types.js";
 import { Terminal49Adapter } from "./terminal49Adapter.js";
 import { CargoAiAdapter } from "./cargoAiAdapter.js";
+import { MacroPointAdapter } from "./macroPointAdapter.js";
 
 function pickAdapter(mode: TrackingMode, demoMode = true): TrackingAdapter {
   if (mode === "ocean") {
     const apiKey = process.env.TERMINAL49_API_KEY;
     return new Terminal49Adapter(demoMode || !apiKey, apiKey);
   }
-  const apiKey = process.env.CARGOAI_API_KEY;
-  return new CargoAiAdapter(demoMode || !apiKey, apiKey);
+  if (mode === "air") {
+    const apiKey = process.env.CARGOAI_API_KEY;
+    return new CargoAiAdapter(demoMode || !apiKey, apiKey);
+  }
+  // Land freight — LTL / TL / rail via MacroPoint
+  const apiKey = process.env.MACROPOINT_API_KEY;
+  return new MacroPointAdapter(demoMode || !apiKey, mode, apiKey);
 }
 
 export async function subscribeShipment(
@@ -69,7 +75,11 @@ export async function subscribeShipment(
   }
 
   const milestones = await adapter.fetchMilestones(req);
-  await upsertMilestones(subscriptionId, adapter.demoMode ? "demo" : adapter.provider === "terminal49" ? "terminal49_pull" : "cargoai_pull", milestones);
+  const sourceLabel = adapter.demoMode ? "demo"
+    : adapter.provider === "terminal49" ? "terminal49_pull"
+    : adapter.provider === "cargoai" ? "cargoai_pull"
+    : "macropoint_pull";
+  await upsertMilestones(subscriptionId, sourceLabel, milestones);
   await pool.query(`UPDATE tracking_subscriptions SET last_sync_at = now() WHERE id = $1`, [subscriptionId]);
   return { subscriptionId, provider, demoMode: adapter.demoMode, milestonesInserted: milestones.length };
 }
@@ -91,7 +101,11 @@ export async function refreshShipment(subscriptionId: string) {
     origin: s.origin ?? undefined,
     destination: s.destination ?? undefined,
   });
-  const inserted = await upsertMilestones(subscriptionId, adapter.demoMode ? "demo" : adapter.provider === "terminal49" ? "terminal49_pull" : "cargoai_pull", milestones);
+  const refreshSourceLabel = adapter.demoMode ? "demo"
+    : adapter.provider === "terminal49" ? "terminal49_pull"
+    : adapter.provider === "cargoai" ? "cargoai_pull"
+    : "macropoint_pull";
+  const inserted = await upsertMilestones(subscriptionId, refreshSourceLabel, milestones);
   await pool.query(`UPDATE tracking_subscriptions SET last_sync_at = now() WHERE id = $1`, [subscriptionId]);
   return inserted;
 }
