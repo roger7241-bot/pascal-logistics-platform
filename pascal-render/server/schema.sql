@@ -1728,5 +1728,5 @@ INSERT INTO hts_reference (hs_code, chapter, short_description, us_mfn_rate_pct,
   ('3923.90', '39', 'Plastic articles for conveyance/packing — other',        3.0, 0.0, 5.0, 0.0, FALSE, ARRAY['plastic container','plastic packaging'], NULL),
   ('4009.31', '40', 'Rubber hose, not reinforced, with fittings',             2.5, 0.0, 6.5, 0.0, FALSE, ARRAY['rubber hose','hose assembly'], NULL),
   ('4016.99', '40', 'Rubber articles — other',                                2.5, 0.0, 6.5, 0.0, FALSE, ARRAY['rubber part','rubber component'], NULL),
-  ('4412.31', '44', 'Plywood, ≤ 6mm outer ply of tropical wood',              8.0, 0.0, 3.5, 0.0, FALSE, ARRAY['plywood','tropical plywood'], NULL),
+  ('4412.31', '44', 'Plywood, <= 6mm outer ply of tropical wood',             8.0, 0.0, 3.5, 0.0, FALSE, ARRAY['plywood','tropical plywood'], NULL)
 ON CONFLICT (hs_code) DO NOTHING;
